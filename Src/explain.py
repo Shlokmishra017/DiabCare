@@ -343,7 +343,19 @@ def explain_patient(
         f"SHAP values length {len(sv)} != feature names length {len(feature_names)}"
     )
 
-    shap_pairs = sorted(zip(feature_names, sv), key=lambda x: abs(x[1]), reverse=True)
+    # Convert X_transformed to dense 1D array of values
+    if hasattr(X_transformed, "toarray"):
+        x_dense = X_transformed.toarray()[0]
+    else:
+        x_dense = X_transformed[0]
+
+    # Only explain numeric features or categorical features that are actually present
+    filtered_shap_pairs = []
+    for feat_name, shap_val, val in zip(feature_names, sv, x_dense):
+        if feat_name.startswith("numerical__") or (feat_name.startswith("categorical__") and val > 0.5):
+            filtered_shap_pairs.append((feat_name, shap_val))
+
+    shap_pairs = sorted(filtered_shap_pairs, key=lambda x: abs(x[1]), reverse=True)
 
     top_factors = []
     for feat_name, shap_val in shap_pairs[:top_n]:

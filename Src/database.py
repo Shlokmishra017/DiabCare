@@ -41,6 +41,7 @@ CREATE_PATIENTS_SQL = f"""
 CREATE TABLE IF NOT EXISTS patients (
     patient_id  TEXT PRIMARY KEY,
     summary     TEXT,
+    name        TEXT,
     {_FEATURE_COL_DEFS}
 );
 """
@@ -72,9 +73,20 @@ def _build_summary(row: pd.Series) -> str:
     race = str(row.get("race", "Unknown"))
     time_in = row.get("time_in_hospital", "?")
     n_inpatient = row.get("number_inpatient", 0)
+    
+    # Extra fields for the details expander
+    n_medications = row.get("num_medications", 0)
+    n_lab = row.get("num_lab_procedures", 0)
+    n_diagnoses = row.get("number_diagnoses", 0)
+    n_outpatient = row.get("number_outpatient", 0)
+    n_emergency = row.get("number_emergency", 0)
+    n_procedures = row.get("num_procedures", 0)
+    
     return (
         f"{gender}, {age} yrs, {race} | "
-        f"Stay: {time_in}d | Prior inpatient: {n_inpatient}"
+        f"Stay: {time_in}d | Prior inpatient: {n_inpatient} | "
+        f"Meds: {n_medications} | Lab: {n_lab} | Diagnoses: {n_diagnoses} | "
+        f"Outpatient: {n_outpatient} | Emergency: {n_emergency} | Procedures: {n_procedures}"
     )
 
 
@@ -141,6 +153,33 @@ def seed_patients(
     return inserted_ids
 
 
+def save_new_patient(db_path: str, patient_id: str, features: dict) -> None:
+    """Save a new patient's raw features into the patients table."""
+    summary = _build_summary(pd.Series(features))
+    name = features.get("name")
+
+    cols = ["patient_id", "summary", "name"] + _FEATURE_COLS
+    placeholders = ", ".join("?" for _ in cols)
+    col_names = ", ".join(f'"{c}"' for c in cols)
+
+    # Build values list matching the feature column definitions
+    values = [
+        patient_id,
+        summary,
+        name,
+    ] + [
+        str(features.get(col)) if features.get(col) is not None else None
+        for col in _FEATURE_COLS
+    ]
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            f"INSERT OR REPLACE INTO patients ({col_names}) VALUES ({placeholders})",
+            values,
+        )
+        conn.commit()
+
+
 def get_patient(db_path: str, patient_id: str) -> Optional[pd.DataFrame]:
     """
     Load a patient's feature row from the DB as a single-row DataFrame.
@@ -174,13 +213,26 @@ def get_patient(db_path: str, patient_id: str) -> Optional[pd.DataFrame]:
 
 
 def get_all_patients(db_path: str) -> list[dict]:
-    """Return all patients as list of {patient_id, summary} for /patients endpoint."""
+    """Return all patients as list of {patient_id, summary, name, risk_percent} for /patients endpoint."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT patient_id, summary FROM patients ORDER BY patient_id"
+            """
+            SELECT p.patient_id, p.summary, p.name, pr.risk_percent
+            FROM patients p
+            LEFT JOIN predictions pr ON p.patient_id = pr.patient_id
+            ORDER BY COALESCE(pr.risk_percent, -1) DESC, p.patient_id ASC
+            """
         ).fetchall()
-    return [{"patient_id": r["patient_id"], "summary": r["summary"]} for r in rows]
+    return [
+        {
+            "patient_id": r["patient_id"],
+            "summary": r["summary"],
+            "name": r["name"],
+            "risk_percent": r["risk_percent"],
+        }
+        for r in rows
+    ]
 
 
 def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
