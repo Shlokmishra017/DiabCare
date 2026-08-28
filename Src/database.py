@@ -12,6 +12,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
+import bcrypt
 
 import pandas as pd
 
@@ -57,13 +58,111 @@ CREATE TABLE IF NOT EXISTS predictions (
 );
 """
 
+CREATE_USERS_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id       TEXT PRIMARY KEY,
+    name          TEXT,
+    email         TEXT UNIQUE,
+    password_hash TEXT,
+    role          TEXT CHECK(role IN ('doctor','admin')),
+    status        TEXT CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'approved',
+    created_at    TEXT
+);
+"""
+
+
+def _seed_users(conn) -> None:
+    """Seed default doctor and admin accounts if they don't exist."""
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    if count == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        users_data = [
+            ("U-1001", "Dr. Alice Smith", "doctor1@diabcare.ai", "doctor123", "doctor", "approved"),
+            ("U-1002", "Dr. Bob Jones", "doctor2@diabcare.ai", "doctor288", "doctor", "approved"),
+            ("U-1003", "Admin User", "admin@diabcare.ai", "admin999", "admin", "approved"),
+        ]
+        for uid, name, email, pwd, role, status in users_data:
+            pwd_bytes = pwd.encode('utf-8')
+            salt = bcrypt.gensalt()
+            pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+            conn.execute(
+                "INSERT INTO users (user_id, name, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (uid, name, email, pwd_hash, role, status, now)
+            )
+        conn.commit()
+
 
 def init_db(db_path: str) -> None:
     """Create tables if they don't exist."""
     with sqlite3.connect(db_path) as conn:
+        # Check if users table needs migration (status column exists)
+        cursor = conn.cursor()
+        try:
+            table_info = cursor.execute("PRAGMA table_info(users)").fetchall()
+            if table_info:
+                has_status = any(col[1] == "status" for col in table_info)
+                if not has_status:
+                    conn.execute("DROP TABLE users")
+        except Exception as e:
+            print(f"[Warning] Migration check failed: {str(e)}")
+
         conn.execute(CREATE_PATIENTS_SQL)
         conn.execute(CREATE_PREDICTIONS_SQL)
+        conn.execute(CREATE_USERS_SQL)
         conn.commit()
+        _seed_users(conn)
+
+
+def get_user_by_email(db_path: str, email: str) -> Optional[dict]:
+    """Return user data dict if email exists, else None."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM users WHERE email = ?", (email,)
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "user_id": row["user_id"],
+        "name": row["name"],
+        "email": row["email"],
+        "password_hash": row["password_hash"],
+        "role": row["role"],
+        "status": row["status"],
+        "created_at": row["created_at"]
+    }
+
+
+def save_new_user(db_path: str, user_id: str, name: str, email: str, password_hash: str, role: str, status: str) -> None:
+    """Register a new user in the database."""
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO users (user_id, name, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (user_id, name, email, password_hash, role, status, now)
+        )
+        conn.commit()
+
+
+def get_pending_requests(db_path: str) -> list[dict]:
+    """Get all doctor accounts pending access approval."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT user_id, name, email, role, created_at FROM users WHERE status = 'pending' ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_user_status(db_path: str, user_id: str, status: str) -> None:
+    """Approve or reject a user's sign up request."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE users SET status = ? WHERE user_id = ?",
+            (status, user_id)
+        )
+        conn.commit()
+
 
 
 def _build_summary(row: pd.Series) -> str:

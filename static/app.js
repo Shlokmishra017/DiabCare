@@ -1,29 +1,62 @@
 /**
  * DiabCare AI - Redesigned Frontend Controller
  * ===============================================
- * Drives the hospital light-themed dashboard, patient list search,
- * SPA transitions, gauge animations, and mockup assets.
+ * Drives the hospital light-themed dashboard, patient list table search,
+ * SPA transitions, gauge animations, and SHAP cards.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
     
-    // Mapped Clinical Names for seeded patient IDs to maximize visual fidelity
-    const PATIENT_NAMES = {
-        "2278392": "Emma Robinson",
-        "149190": "Chloe Jenkins",
-        "64410": "Aaliyah Jackson",
-        "421194": "Eleanor Davis",
-        "2549268": "Arthur Miller",
-        "2552952": "Margaret Wilson"
+    // Mapped Clinical Identities for seeded patient IDs matching the mockup screenshots
+    const PATIENT_MAPPING = {
+        "2552952": { uiId: "P-1001", ageGroup: "65-70", gender: "Male", lastEncounter: "Apr 24, 2025" },
+        "149190": { uiId: "P-1002", ageGroup: "55-60", gender: "Female", lastEncounter: "Apr 22, 2025" },
+        "421194": { uiId: "P-1003", ageGroup: "70-75", gender: "Female", lastEncounter: "Apr 20, 2025" },
+        "64410": { uiId: "P-1004", ageGroup: "60-65", gender: "Male", lastEncounter: "Apr 18, 2025" },
+        "2549268": { uiId: "P-1005", ageGroup: "45-50", gender: "Male", lastEncounter: "Apr 16, 2025" },
+        "2278392": { uiId: "P-1006", ageGroup: "50-55", gender: "Female", lastEncounter: "Apr 14, 2025" }
     };
 
-    // DOM Navigation Views
+    // DOM Navigation Views & Layouts
+    const appLayout = document.querySelector(".app-layout");
     const overviewView = document.getElementById("overview-view");
     const detailView = document.getElementById("detail-view");
     const newPatientView = document.getElementById("new-patient-view");
     const sidebarOverview = document.getElementById("menu-overview");
     const sidebarPatients = document.getElementById("menu-patients");
-    const navPatients = document.getElementById("nav-patients");
+    const menuRequests = document.getElementById("menu-requests");
+    const requestsView = document.getElementById("requests-view");
+    
+    // Login Screen Elements
+    const loginView = document.getElementById("login-view");
+    const loginSection = document.getElementById("login-section");
+    const registerSection = document.getElementById("register-section");
+    const linkShowRegister = document.getElementById("link-show-register");
+    const linkShowLogin = document.getElementById("link-show-login");
+    const loginForm = document.getElementById("login-form");
+    const loginEmail = document.getElementById("login-email");
+    const loginPassword = document.getElementById("login-password");
+    const loginErrorBanner = document.getElementById("login-error-banner");
+    
+    // Registration Form Elements
+    const registerForm = document.getElementById("register-form");
+    const registerName = document.getElementById("register-name");
+    const registerEmail = document.getElementById("register-email");
+    const registerPassword = document.getElementById("register-password");
+    const registerErrorBanner = document.getElementById("register-error-banner");
+    const registerSuccessBanner = document.getElementById("register-success-banner");
+    
+    // Sidebar User Profile Block Elements
+    const userProfileBlock = document.getElementById("user-profile-block");
+    const userAvatarInitials = document.getElementById("user-avatar-initials");
+    const userDisplayName = document.getElementById("user-display-name");
+    const userDisplayRole = document.getElementById("user-display-role");
+    const btnLogout = document.getElementById("btn-logout");
+
+    // Access Requests Views Elements
+    const requestsEmptyState = document.getElementById("requests-empty-state");
+    const requestsTableContainer = document.getElementById("requests-table-container");
+    const requestsTableBody = document.getElementById("requests-table-body");
     
     // New Screening Form Elements
     const btnNewScreening = document.querySelector(".btn-new-screening");
@@ -35,14 +68,19 @@ document.addEventListener("DOMContentLoaded", () => {
     // Overview Screen Elements
     const patientSearch = document.getElementById("patient-search");
     const patientListLoading = document.getElementById("patient-list-loading");
-    const patientList = document.getElementById("patient-list");
+    const patientTableBody = document.getElementById("patient-table-body");
+    const patientShowingLabel = document.getElementById("patient-showing-label");
 
-    // Detail Screen Elements
+    // Detail Screen Header Elements
     const backLink = document.getElementById("back-link");
-    const detailPatientTitle = document.getElementById("detail-patient-title");
+    const detailPatientId = document.getElementById("detail-patient-id");
+    const detailAgeGroup = document.getElementById("detail-age-group");
+    const detailGender = document.getElementById("detail-gender");
+    const detailLastEncounter = document.getElementById("detail-last-encounter");
+
+    // Detail Screen Loading/Results Containers
     const detailLoadingState = document.getElementById("detail-loading-state");
     const detailResultsContainer = document.getElementById("detail-results-container");
-    const detailRiskCardBg = document.getElementById("detail-risk-card-bg");
     const progressRingFill = document.getElementById("progress-ring-fill");
     const detailRiskPercent = document.getElementById("detail-risk-percent");
     const detailRiskBadge = document.getElementById("detail-risk-badge");
@@ -60,28 +98,20 @@ document.addEventListener("DOMContentLoaded", () => {
     let allPatientsCached = [];
     let activePatientFeatures = null;
 
-    // Helper: Generate Initials
-    function getInitials(name) {
-        if (!name) return "PT";
-        const parts = name.trim().split(" ");
-        if (parts.length >= 2) {
-            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-        }
-        return parts[0].slice(0, 2).toUpperCase();
-    }
-
     // Helper: Parse Patient Summary
     function parsePatientSummary(summary) {
         if (!summary) return {};
         const features = {};
-        
         const parts = summary.split("|");
         
         // 1. Demographics (e.g. "Female, 10-20 yrs, Caucasian")
         const demoPart = parts[0] ? parts[0].trim() : "";
         const demoSubParts = demoPart.split(",");
         if (demoSubParts[0]) features["gender"] = demoSubParts[0].trim();
-        if (demoSubParts[1]) features["age"] = demoSubParts[1].trim();
+        if (demoSubParts[1]) {
+            // Strip "yrs" and brackets to get clean age range
+            features["age"] = demoSubParts[1].replace("yrs", "").replace("[", "").replace(")", "").trim();
+        }
         if (demoSubParts[2]) features["race"] = demoSubParts[2].trim();
         
         // 2. Parse remaining fields
@@ -217,30 +247,26 @@ document.addEventListener("DOMContentLoaded", () => {
             return labelText;
         }
         
-        // 7. Demographics
-        if (labelLower.includes("race")) {
-            if (activePatientFeatures["race"]) return activePatientFeatures["race"];
-            const match = labelText.match(/race:\s*(.+)$/i);
-            return match && match[1] ? match[1] : "Unknown";
-        }
-        if (labelLower.includes("gender") || labelLower.includes("patient")) {
-            if (activePatientFeatures["gender"]) return activePatientFeatures["gender"];
-            if (labelLower.includes("female")) return "Female";
-            if (labelLower.includes("male")) return "Male";
-        }
-        if (labelLower.includes("aged") || labelLower.includes("age")) {
-            if (activePatientFeatures["age"]) return activePatientFeatures["age"];
-            const match = labelText.match(/aged\s*(.+)$/i);
-            return match && match[1] ? match[1] : "Unknown";
-        }
-        
         return labelText;
     }
 
     // 1. Fetch available patients on load
     async function fetchPatients() {
         try {
-            const response = await fetch("/patients");
+            const token = sessionStorage.getItem("token");
+            if (!token) {
+                handleLogout();
+                return;
+            }
+            const response = await fetch("/patients", {
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -248,114 +274,119 @@ document.addEventListener("DOMContentLoaded", () => {
             allPatientsCached = patients;
 
             patientListLoading.classList.add("hidden");
-            patientList.innerHTML = "";
+            patientTableBody.innerHTML = "";
 
             patients.forEach(patient => {
-                const name = patient.name || PATIENT_NAMES[patient.patient_id] || `Patient ${patient.patient_id}`;
-                const initials = getInitials(name);
-                
-                // Parse summary data (e.g. "Female, 10-20 yrs, Caucasian | Stay: 3d | Prior inpatient: 0")
-                const parts = patient.summary.split("|");
-                const demographics = parts[0] ? parts[0].trim() : "-";
-                const stay = parts[1] ? parts[1].replace("Stay:", "").trim() : "-";
-                const priorInpatient = parts[2] ? parts[2].replace("Prior inpatient:", "").trim() : "0";
+                let uiId = `P-${patient.patient_id}`;
+                let ageGroup = "70-80";
+                let gender = "Female";
+                let lastEncounter = "Just Screened";
 
-                let riskBadgeHtml = "";
-                if (patient.risk_percent !== null && patient.risk_percent !== undefined) {
-                    let badgeClass = "risk-badge-low";
-                    if (patient.risk_percent > 60) {
-                        badgeClass = "risk-badge-high";
-                    } else if (patient.risk_percent >= 30) {
-                        badgeClass = "risk-badge-med";
-                    }
-                    riskBadgeHtml = `<div class="patient-risk-badge ${badgeClass}">${Math.round(patient.risk_percent)}% Risk</div>`;
+                // Check mapping for default seeded demo patients
+                if (PATIENT_MAPPING[patient.patient_id]) {
+                    const mapped = PATIENT_MAPPING[patient.patient_id];
+                    uiId = mapped.uiId;
+                    ageGroup = mapped.ageGroup;
+                    gender = mapped.gender;
+                    lastEncounter = mapped.lastEncounter;
                 } else {
-                    riskBadgeHtml = `<div class="patient-risk-badge risk-badge-none">No prediction</div>`;
+                    // It's a new screening profile, parse summary details
+                    const parsed = parsePatientSummary(patient.summary);
+                    if (parsed.gender) gender = parsed.gender;
+                    if (parsed.age) ageGroup = parsed.age;
+                    // Keep visual ID cleaner for new patients
+                    uiId = `P-${patient.patient_id}`;
                 }
 
-                const patientItem = document.createElement("div");
-                patientItem.className = "patient-item";
-                patientItem.dataset.id = patient.patient_id;
-                patientItem.innerHTML = `
-                    <div class="patient-avatar-circle">${initials}</div>
-                    <div class="patient-info">
-                        <span class="patient-name">${name}</span>
-                        <span class="patient-sub-details">ID: P-${patient.patient_id} &bull; Demographics: ${demographics} &bull; Stay: ${stay} &bull; Prior Inpatient: ${priorInpatient}</span>
-                    </div>
-                    ${riskBadgeHtml}
-                    <div class="patient-action-arrow">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </div>
+                const row = document.createElement("tr");
+                row.dataset.id = patient.patient_id;
+                row.dataset.uiId = uiId;
+                row.dataset.ageGroup = ageGroup;
+                row.dataset.gender = gender;
+                row.dataset.lastEncounter = lastEncounter;
+                
+                row.innerHTML = `
+                    <td class="patient-table-id">${uiId}</td>
+                    <td>${ageGroup}</td>
+                    <td>${gender}</td>
+                    <td>${lastEncounter}</td>
+                    <td>
+                        <button class="btn-assess">Assess Risk &rarr;</button>
+                    </td>
                 `;
 
-                // Item Click Listener to load details
-                patientItem.addEventListener("click", () => {
-                    openPatientScreening(patient.patient_id, name);
+                // Add click triggers
+                const triggerAssess = () => {
+                    openPatientScreening(patient.patient_id, uiId, ageGroup, gender, lastEncounter);
+                };
+                
+                row.addEventListener("click", (e) => {
+                    if (e.target.tagName !== "BUTTON") triggerAssess();
+                });
+                row.querySelector(".btn-assess").addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    triggerAssess();
                 });
 
-                patientList.appendChild(patientItem);
+                patientTableBody.appendChild(row);
             });
+
+            updateShowingCount();
         } catch (error) {
-            console.error("Error loading patient listing:", error);
+            console.error("Error loading patient table listing:", error);
             patientListLoading.innerHTML = `<span style="color: var(--high-color);">Failed to load clinical profiles. Is server running?</span>`;
         }
     }
 
-    // 2. Real-time patient search filter
+    // Helper: update shown patients label count
+    function updateShowingCount() {
+        const rows = patientTableBody.querySelectorAll("tr");
+        let visibleCount = 0;
+        rows.forEach(r => {
+            if (!r.classList.contains("hidden")) visibleCount++;
+        });
+        patientShowingLabel.textContent = `Showing ${visibleCount} patients`;
+    }
+
+    // 2. Real-time patient table search filter
     patientSearch.addEventListener("input", (e) => {
         const query = e.target.value.toLowerCase().trim();
-        const items = patientList.querySelectorAll(".patient-item");
-        let visibleCount = 0;
+        const rows = patientTableBody.querySelectorAll("tr");
 
-        items.forEach(item => {
-            const patientId = item.dataset.id;
-            const name = PATIENT_NAMES[patientId] ? PATIENT_NAMES[patientId].toLowerCase() : "";
-            const infoText = item.querySelector(".patient-sub-details").textContent.toLowerCase();
+        rows.forEach(row => {
+            const uiId = row.dataset.uiId.toLowerCase();
+            const ageGroup = row.dataset.ageGroup.toLowerCase();
+            const gender = row.dataset.gender.toLowerCase();
+            const lastEncounter = row.dataset.lastEncounter.toLowerCase();
 
-            if (patientId.includes(query) || name.includes(query) || infoText.includes(query)) {
-                item.classList.remove("hidden");
-                visibleCount++;
+            if (uiId.includes(query) || ageGroup.includes(query) || gender.includes(query) || lastEncounter.includes(query)) {
+                row.classList.remove("hidden");
             } else {
-                item.classList.add("hidden");
+                row.classList.add("hidden");
             }
         });
 
-        let noResultsMsg = document.getElementById("patient-list-no-results");
-        if (visibleCount === 0) {
-            if (!noResultsMsg) {
-                noResultsMsg = document.createElement("div");
-                noResultsMsg.id = "patient-list-no-results";
-                noResultsMsg.className = "list-no-results";
-                noResultsMsg.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <span>No clinical profiles found matching "${e.target.value}"</span>
-                `;
-                patientList.parentNode.appendChild(noResultsMsg);
-            } else {
-                noResultsMsg.querySelector("span").textContent = `No clinical profiles found matching "${e.target.value}"`;
-                noResultsMsg.classList.remove("hidden");
-            }
-        } else {
-            if (noResultsMsg) {
-                noResultsMsg.classList.add("hidden");
-            }
-        }
+        updateShowingCount();
     });
 
     // 3. Load prediction and render Detail view (SPA)
-    async function openPatientScreening(patientId, patientName) {
+    async function openPatientScreening(patientId, uiId, ageGroup, gender, lastEncounter) {
         // Toggle view
         overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
         detailView.classList.remove("hidden");
         
-        // Update headers
-        detailPatientTitle.textContent = `Patient ID: P-${patientId} (${patientName})`;
+        // Update headers immediately
+        detailPatientId.textContent = uiId;
+        detailAgeGroup.textContent = ageGroup;
+        detailGender.textContent = gender;
+        detailLastEncounter.textContent = lastEncounter;
         
         // Show loading state
         detailLoadingState.classList.remove("hidden");
         detailResultsContainer.classList.add("hidden");
 
-        // Parse summary for active patient
+        // Parse summary features for expansion details
         const patientObj = allPatientsCached.find(p => p.patient_id === patientId);
         if (patientObj) {
             activePatientFeatures = parsePatientSummary(patientObj.summary);
@@ -364,11 +395,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         try {
+            const token = sessionStorage.getItem("token");
             const response = await fetch("/predict", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
                 body: JSON.stringify({ patient_id: patientId })
             });
+
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
@@ -378,10 +418,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await response.json();
             
-            // Refresh patient listing so it shows the risk badge
+            // Refresh list to cache prediction risk values
             fetchPatients();
             
-            // Add a brief timeout delay to allow loader to register
+            // Brief animation transition delay
             setTimeout(() => {
                 detailLoadingState.classList.add("hidden");
                 detailResultsContainer.classList.remove("hidden");
@@ -389,12 +429,12 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 300);
 
         } catch (error) {
-            console.error("Prediction loader failed:", error);
+            console.error("Prediction diagnostics failed:", error);
             detailLoadingState.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="var(--high-color)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
                 <h3 style="margin-top: 1rem;">Diagnostics Error</h3>
                 <p style="color: var(--high-color); margin-top: 0.5rem; font-weight: 500;">${error.message}</p>
-                <button class="btn btn-secondary mt-4" id="error-back-btn">Return to Overview</button>
+                <button class="btn-cancel mt-4" id="error-back-btn" style="border:1px solid #cbd5e1; background:#fff;">Return to Patient Search</button>
             `;
             document.getElementById("error-back-btn").addEventListener("click", showOverview);
         }
@@ -404,123 +444,102 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderDetailsView(data) {
         const { risk_percent, risk_category, follow_up_priority, top_factors } = data;
 
-        // --- Render circular ring gauge ---
+        // --- Render semi-circular gauge ---
         animateGauge(risk_percent);
         
-        // Reset card class list
-        detailRiskCardBg.className = "card detail-risk-card";
-        
         if (risk_category === "Low") {
-            detailRiskCardBg.classList.add("low-card");
             detailRiskBadge.textContent = "LOW RISK";
             detailRiskBadge.style.color = "var(--low-color)";
             progressRingFill.style.stroke = "var(--low-color)";
         } else if (risk_category === "Moderate") {
-            detailRiskCardBg.classList.add("moderate-card");
             detailRiskBadge.textContent = "MODERATE RISK";
             detailRiskBadge.style.color = "var(--mod-color)";
             progressRingFill.style.stroke = "var(--mod-color)";
         } else {
-            detailRiskCardBg.classList.add("high-card");
             detailRiskBadge.textContent = "HIGH RISK";
             detailRiskBadge.style.color = "var(--high-color)";
             progressRingFill.style.stroke = "var(--high-color)";
         }
 
         // --- Render priority banner alert ---
-        priorityAlertBanner.className = "priority-banner-box";
+        priorityAlertBanner.className = "priority-alert-box";
         
         if (follow_up_priority === "Low") {
-            priorityAlertBanner.classList.add("banner-low");
-            priorityBannerTitle.textContent = "LOW PRIORITY";
-            priorityBannerDescription.textContent = "Continue standard post-discharge protocol. Arrange routine outpatient clinic follow-up.";
-            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12" y1="8" y2="8"/></svg>`;
+            priorityAlertBanner.classList.add("alert-low");
+            priorityBannerTitle.textContent = "LOW FOLLOW-UP PRIORITY";
+            priorityBannerDescription.textContent = "Routine post-discharge follow-up priority.";
+            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
         } else if (follow_up_priority === "Medium") {
-            priorityAlertBanner.classList.add("banner-medium");
-            priorityBannerTitle.textContent = "MODERATE PRIORITY";
-            priorityBannerDescription.textContent = "Schedule standard post-discharge follow-up within 7 days. Verify diabetes education compliance.";
-            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12" y1="8" y2="8"/></svg>`;
+            priorityAlertBanner.classList.add("alert-medium");
+            priorityBannerTitle.textContent = "MEDIUM FOLLOW-UP PRIORITY";
+            priorityBannerDescription.textContent = "Standard post-discharge follow-up priority.";
+            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
         } else {
-            priorityAlertBanner.classList.add("banner-high");
-            priorityBannerTitle.textContent = "HIGH PRIORITY";
-            priorityBannerDescription.textContent = "Prioritize for post-discharge follow-up. Clinical review recommended within 48 hours. Assign transitional coordinator.";
-            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+            priorityAlertBanner.classList.add("alert-high");
+            priorityBannerTitle.textContent = "HIGH FOLLOW-UP PRIORITY";
+            priorityBannerDescription.textContent = "Prioritize this patient for post-discharge follow-up.";
+            priorityBannerIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
         }
 
         // --- Render SHAP Top Risk Factors ---
         detailFactorsList.innerHTML = "";
         
-        // Render interactive/clickable factors
         top_factors.forEach(item => {
             const isIncrease = item.direction.toLowerCase().includes("increase");
             const isDecrease = item.direction.toLowerCase().includes("decrease");
             
-            let rowBgClass = "neutral-factor-bg";
-            let iconClass = "neutral-icon";
-            let indicatorClass = "neutral-text";
-            let labelText = item.factor;
-            let subText = "NO IMPACT";
-            
-            // Icon SVG shapes
-            let svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+            let arrowClass = "up";
+            let subText = "Increases risk";
+            let arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`;
 
-            if (isIncrease) {
-                rowBgClass = "high-factor-bg";
-                iconClass = "up-icon";
-                indicatorClass = "up-text";
-                subText = "INCREASES RISK";
-                svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>`;
-            } else if (isDecrease) {
-                rowBgClass = "low-factor-bg";
-                iconClass = "down-icon";
-                indicatorClass = "down-text";
-                subText = "DECREASES RISK";
-                svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="7" x2="17" y2="17"/><polyline points="17 7 17 17 7 17"/></svg>`;
+            if (isDecrease) {
+                arrowClass = "down";
+                subText = "Decreases risk";
+                arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`;
             }
 
+            const labelText = item.factor;
             const factorRow = document.createElement("div");
-            factorRow.className = `factor-item-row ${rowBgClass} clickable-factor`;
+            factorRow.className = "factor-card-box";
             
-            // Extract raw value using helper
             const rawValue = getRawValueForFactor(labelText);
 
             factorRow.innerHTML = `
-                <div class="factor-main-info">
-                    <div class="factor-left-content">
-                        <div class="factor-direction-icon-circle ${iconClass}">
-                            ${svgIcon}
-                        </div>
-                        <span class="factor-label-text">${labelText}</span>
+                <div style="display: flex; align-items: center; gap: 1rem; width: 100%;">
+                    <div class="factor-arrow-indicator ${arrowClass}">
+                        ${arrowSvg}
                     </div>
-                    <div class="factor-right-content">
-                        <span class="factor-direction-indicator-text ${indicatorClass}">${subText}</span>
-                        <span class="factor-expand-chevron">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </span>
+                    <div class="factor-card-content">
+                        <span class="factor-card-title">${labelText}</span>
+                        <span class="factor-card-subtext">${subText}</span>
+                    </div>
+                    <div class="factor-chevron">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                 </div>
-                <div class="factor-raw-details hidden">
-                    <div class="factor-details-divider"></div>
-                    <div class="factor-details-body">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
-                        <span><strong>Clinical Value Recorded:</strong> ${rawValue}</span>
-                    </div>
+                <div class="factor-expanded-details hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span style="margin-left: 0.25rem;"><strong>Clinical Value Recorded:</strong> ${rawValue}</span>
                 </div>
             `;
 
-            factorRow.addEventListener("click", (e) => {
-                // Prevent toggling if selecting text
+            // Expansion click handler
+            factorRow.addEventListener("click", () => {
                 if (window.getSelection().toString()) return;
                 
-                const details = factorRow.querySelector(".factor-raw-details");
-                const chevron = factorRow.querySelector(".factor-expand-chevron");
+                const details = factorRow.querySelector(".factor-expanded-details");
+                const chevron = factorRow.querySelector(".factor-chevron");
                 const isHidden = details.classList.contains("hidden");
                 
                 if (isHidden) {
                     details.classList.remove("hidden");
+                    factorRow.style.flexDirection = "column";
+                    factorRow.style.alignItems = "stretch";
                     chevron.style.transform = "rotate(180deg)";
                 } else {
                     details.classList.add("hidden");
+                    factorRow.style.flexDirection = "row";
+                    factorRow.style.alignItems = "center";
                     chevron.style.transform = "rotate(0deg)";
                 }
             });
@@ -531,13 +550,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // SVG Circular Ring Offset Calculation & Counter Animation
     function animateGauge(targetPercent) {
-        // SVG Circumference: 2 * Math.PI * 82 = 515.22
-        const circumference = 515.22;
+        // Semi-circle length: 283
+        const circumference = 283;
         const offset = circumference - (circumference * targetPercent) / 100;
         
         progressRingFill.style.strokeDashoffset = offset;
 
-        // Number animation
+        // Percentage label animation
         let current = 0;
         const duration = 600;
         const interval = 12;
@@ -557,24 +576,47 @@ document.addEventListener("DOMContentLoaded", () => {
     function showOverview() {
         detailView.classList.add("hidden");
         newPatientView.classList.add("hidden");
+        requestsView.classList.add("hidden");
         overviewView.classList.remove("hidden");
         patientSearch.value = "";
         
-        // Remove active class from menu items and activate Overview
-        document.querySelectorAll(".menu-item").forEach(el => el.classList.remove("active"));
+        // Update menu highlight
         sidebarOverview.classList.add("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+        
+        // Show all table rows
+        const rows = patientTableBody.querySelectorAll("tr");
+        rows.forEach(r => r.classList.remove("hidden"));
+        updateShowingCount();
     }
 
     function showNewPatientForm() {
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
+        requestsView.classList.add("hidden");
         newPatientView.classList.remove("hidden");
         formErrorBanner.style.display = "none";
         formErrorBanner.textContent = "";
         newPatientForm.reset();
         
-        // Remove active class from menu items and activate New Screening
-        document.querySelectorAll(".menu-item").forEach(el => el.classList.remove("active"));
+        // Clear menu active status
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+    }
+
+    function showRequestsView() {
+        detailView.classList.add("hidden");
+        overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
+        requestsView.classList.remove("hidden");
+        
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.add("active");
+        
+        fetchPendingRequests();
     }
 
     // Bind Navigation Back
@@ -590,12 +632,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     sidebarPatients.addEventListener("click", (e) => {
         e.preventDefault();
-        showOverview();
+        // Render system modal or show system info section
+        alert("DiabCare AI Readmission Predictor prototype system.\nExpected Baseline Performance: AUC 0.65-0.69.");
     });
 
-    navPatients.addEventListener("click", (e) => {
+    menuRequests.addEventListener("click", (e) => {
         e.preventDefault();
-        showOverview();
+        showRequestsView();
     });
 
     btnNewScreening.addEventListener("click", (e) => {
@@ -734,16 +777,35 @@ document.addEventListener("DOMContentLoaded", () => {
         // Transition to detail view with loading state
         newPatientView.classList.add("hidden");
         detailView.classList.remove("hidden");
-        detailPatientTitle.textContent = "Patient ID: New Screening Profile";
+        
+        const uiId = `P-NEW`;
+        const ageGroup = formData.get("age").replace("[", "").replace(")", "").trim();
+        const gender = formData.get("gender");
+        const lastEncounter = "Just Screened";
+
+        detailPatientId.textContent = uiId;
+        detailAgeGroup.textContent = ageGroup;
+        detailGender.textContent = gender;
+        detailLastEncounter.textContent = lastEncounter;
+        
         detailLoadingState.classList.remove("hidden");
         detailResultsContainer.classList.add("hidden");
 
         try {
+            const token = sessionStorage.getItem("token");
             const response = await fetch("/predict_new", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
                 body: JSON.stringify(payload)
             });
+
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
 
             if (!response.ok) {
                 const errData = await response.json();
@@ -763,7 +825,8 @@ document.addEventListener("DOMContentLoaded", () => {
             setTimeout(() => {
                 detailLoadingState.classList.add("hidden");
                 detailResultsContainer.classList.remove("hidden");
-                detailPatientTitle.textContent = `Patient ID: P-${predictionResult.patient_id} (New Screening)`;
+                const newUiId = `P-${predictionResult.patient_id}`;
+                detailPatientId.textContent = newUiId;
                 renderDetailsView(predictionResult);
             }, 300);
 
@@ -777,6 +840,271 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Run Initial Data Load
-    fetchPatients();
+    function getInitials(name) {
+        if (!name) return "PT";
+        const parts = name.trim().split(" ");
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return parts[0].slice(0, 2).toUpperCase();
+    }
+
+    function checkSession() {
+        const token = sessionStorage.getItem("token");
+        const user = JSON.parse(sessionStorage.getItem("user") || "null");
+        
+        if (!token || !user) {
+            appLayout.classList.add("hidden");
+            loginView.classList.remove("hidden");
+            return;
+        }
+        
+        loginView.classList.add("hidden");
+        appLayout.classList.remove("hidden");
+        
+        // Update sidebar profile block
+        userDisplayName.textContent = user.name;
+        userDisplayRole.textContent = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+        userAvatarInitials.textContent = getInitials(user.name);
+        
+        // Gated Access Requests for Admins
+        if (user.role === "admin") {
+            menuRequests.classList.remove("hidden");
+        } else {
+            menuRequests.classList.add("hidden");
+        }
+        
+        // Trigger patient list load
+        fetchPatients();
+    }
+
+    function handleLogout(warningMessage) {
+        sessionStorage.removeItem("token");
+        sessionStorage.removeItem("user");
+        
+        loginEmail.value = "";
+        loginPassword.value = "";
+        
+        if (warningMessage) {
+            loginErrorBanner.textContent = warningMessage;
+            loginErrorBanner.style.display = "block";
+        } else {
+            loginErrorBanner.textContent = "";
+            loginErrorBanner.style.display = "none";
+        }
+        
+        checkSession();
+    }
+
+    // Toggle Login / Register Views
+    linkShowRegister.addEventListener("click", (e) => {
+        e.preventDefault();
+        loginSection.classList.add("hidden");
+        registerSection.classList.remove("hidden");
+        
+        registerName.value = "";
+        registerEmail.value = "";
+        registerPassword.value = "";
+        registerErrorBanner.textContent = "";
+        registerErrorBanner.style.display = "none";
+        registerSuccessBanner.textContent = "";
+        registerSuccessBanner.style.display = "none";
+    });
+
+    linkShowLogin.addEventListener("click", (e) => {
+        e.preventDefault();
+        registerSection.classList.add("hidden");
+        loginSection.classList.remove("hidden");
+        
+        loginEmail.value = "";
+        loginPassword.value = "";
+        loginErrorBanner.textContent = "";
+        loginErrorBanner.style.display = "none";
+    });
+
+    // Bind Registration Form Submission
+    registerForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        registerErrorBanner.textContent = "";
+        registerErrorBanner.style.display = "none";
+        registerSuccessBanner.textContent = "";
+        registerSuccessBanner.style.display = "none";
+
+        const name = registerName.value.trim();
+        const email = registerEmail.value.trim();
+        const password = registerPassword.value;
+
+        try {
+            const response = await fetch("/auth/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, password })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || "Registration failed.");
+            }
+
+            const result = await response.json();
+            registerSuccessBanner.textContent = result.message;
+            registerSuccessBanner.style.display = "block";
+            
+            // Clear inputs
+            registerName.value = "";
+            registerEmail.value = "";
+            registerPassword.value = "";
+            
+            // Redirect after delay
+            setTimeout(() => {
+                registerSection.classList.add("hidden");
+                loginSection.classList.remove("hidden");
+                loginEmail.value = email;
+                loginPassword.value = "";
+                loginErrorBanner.textContent = "Account pending approval. Please wait for an administrator.";
+                loginErrorBanner.style.display = "block";
+            }, 3000);
+
+        } catch (error) {
+            registerErrorBanner.textContent = error.message;
+            registerErrorBanner.style.display = "block";
+        }
+    });
+
+    // Bind Logout
+    btnLogout.addEventListener("click", (e) => {
+        e.preventDefault();
+        handleLogout();
+    });
+
+    // Bind Login Form Submission
+    loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        loginErrorBanner.textContent = "";
+        loginErrorBanner.style.display = "none";
+
+        const email = loginEmail.value.trim();
+        const password = loginPassword.value;
+
+        try {
+            const response = await fetch("/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || "Authentication failed. Check credentials.");
+            }
+
+            const result = await response.json();
+            sessionStorage.setItem("token", result.access_token);
+            sessionStorage.setItem("user", JSON.stringify(result.user));
+
+            checkSession();
+        } catch (error) {
+            loginErrorBanner.textContent = error.message;
+            loginErrorBanner.style.display = "block";
+        }
+    });
+
+    // Fetch and render pending doctor access requests (Admin only)
+    async function fetchPendingRequests() {
+        try {
+            const token = sessionStorage.getItem("token");
+            if (!token) {
+                handleLogout();
+                return;
+            }
+            const response = await fetch("/admin/requests", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const requests = await response.json();
+            
+            if (requests.length === 0) {
+                requestsEmptyState.classList.remove("hidden");
+                requestsTableContainer.classList.add("hidden");
+            } else {
+                requestsEmptyState.classList.add("hidden");
+                requestsTableContainer.classList.remove("hidden");
+                requestsTableBody.innerHTML = "";
+                
+                requests.forEach(req => {
+                    const row = document.createElement("tr");
+                    
+                    // Format created_at date
+                    let dateStr = "Pending";
+                    if (req.created_at) {
+                        try {
+                            const d = new Date(req.created_at);
+                            dateStr = d.toLocaleString();
+                        } catch (e) {}
+                    }
+                    
+                    row.innerHTML = `
+                        <td style="font-weight: 700;">${req.name}</td>
+                        <td>${req.email}</td>
+                        <td>${dateStr}</td>
+                        <td style="text-align: center;">
+                            <button class="btn-approve" data-id="${req.user_id}">Approve</button>
+                            <button class="btn-reject" data-id="${req.user_id}">Reject</button>
+                        </td>
+                    `;
+                    
+                    row.querySelector(".btn-approve").addEventListener("click", async () => {
+                        await handleRequestAction(req.user_id, "approve");
+                    });
+                    
+                    row.querySelector(".btn-reject").addEventListener("click", async () => {
+                        await handleRequestAction(req.user_id, "reject");
+                    });
+                    
+                    requestsTableBody.appendChild(row);
+                });
+            }
+        } catch (error) {
+            console.error("Failed to load pending requests:", error);
+        }
+    }
+
+    async function handleRequestAction(userId, action) {
+        try {
+            const token = sessionStorage.getItem("token");
+            const response = await fetch("/admin/requests/action", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+                body: JSON.stringify({ user_id: userId, action: action })
+            });
+            
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                return;
+            }
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail || "Action failed.");
+            }
+            
+            // Refresh list
+            fetchPendingRequests();
+        } catch (error) {
+            alert(`Error processing request: ${error.message}`);
+        }
+    }
+
+    // Run Initial Data/Authentication Check
+    checkSession();
 });

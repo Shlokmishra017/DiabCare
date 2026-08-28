@@ -3,43 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DiabCare AI - Clinical Screening Dashboard</title>
+    <title>DiabCare AI - Readmission Risk Screening</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- CSS Stylesheet -->
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
-    <div class="app-layout">
+    <!-- VIEW 0: LOGIN VIEW -->
+    <div id="login-view" class="login-view">
+        <div class="login-card">
+            <div class="login-logo">
+                <span class="login-logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                </span>
+                <span class="login-logo-text">DiabCare AI</span>
+            </div>
+
+            <!-- Login Panel -->
+            <div id="login-section">
+                <h3 class="login-title">Clinical Portal Login</h3>
+                <p class="login-subtitle">Enter your credentials to access the readmission risk screening system.</p>
+                <div id="login-error-banner" class="form-error-message"></div>
+                <form id="login-form">
+                    <div class="form-group" style="margin-bottom: 1.25rem;">
+                        <label for="login-email">Email Address</label>
+                        <input type="email" id="login-email" class="form-control" placeholder="e.g. doctor1@diabcare.ai" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1.75rem;">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn-submit" style="width: 100%; padding: 0.85rem 1.25rem; font-size: 0.95rem; border: none;">Log In</button>
+                </form>
+                <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem;">
+                    <a href="#" id="link-show-register" style="color: #3b82f6; font-weight: 600; text-decoration: none;">New Doctor? Request Access</a>
+                </div>
+            </div>
+
+            <!-- Registration Panel -->
+            <div id="register-section" class="hidden">
+                <h3 class="login-title">Request Access</h3>
+                <p class="login-subtitle">Submit your details to request clinical access as a screening doctor.</p>
+                <div id="register-error-banner" class="form-error-message"></div>
+                <div id="register-success-banner" class="form-success-message" style="color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 0.75rem 1rem; border-radius: var(--border-radius-md); font-size: 0.9rem; font-weight: 500; margin-bottom: 1.5rem; display: none;"></div>
+                <form id="register-form">
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="register-name">Full Name</label>
+                        <input type="text" id="register-name" class="form-control" placeholder="e.g. Dr. John Watson" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1rem;">
+                        <label for="register-email">Email Address</label>
+                        <input type="email" id="register-email" class="form-control" placeholder="e.g. watson@diabcare.ai" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label for="register-password">Password</label>
+                        <input type="password" id="register-password" class="form-control" placeholder="••••••••" required>
+                    </div>
+                    <button type="submit" class="btn-submit" style="width: 100%; padding: 0.85rem 1.25rem; font-size: 0.95rem; border: none;">Submit Access Request</button>
+                </form>
+                <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem;">
+                    <a href="#" id="link-show-login" style="color: #3b82f6; font-weight: 600; text-decoration: none;">Back to Login</a>
+                </div>
+            </div>
+
+            <div class="login-demo-accounts">
+                <strong>Demo Accounts:</strong><br>
+                • Doctor: <code>doctor1@diabcare.ai</code> / <code>doctor123</code><br>
+                • Admin: <code>admin@diabcare.ai</code> / <code>admin999</code>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout hidden">
         
-        <!-- Left Sidebar Navigation (Matching Mockup Image 1) -->
+        <!-- Left Sidebar Navigation -->
         <aside class="sidebar">
             <div class="sidebar-logo">
-                <span class="logo-dot"></span>
-                <span class="logo-text">DiabCare AI</span>
+                <div class="logo-header">
+                    <span class="logo-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    </span>
+                    <span class="logo-text">DiabCare AI</span>
+                </div>
+                <span class="logo-sub">Readmission Risk Screening</span>
             </div>
-            
-            <button class="btn btn-new-screening">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span>New Screening</span>
-            </button>
+
+            <!-- Logged-in User Profile Block -->
+            <div id="user-profile-block" class="user-profile-block">
+                <div class="user-avatar-circle" id="user-avatar-initials">PT</div>
+                <div class="user-info">
+                    <span class="user-name" id="user-display-name">Dr. Alice Smith</span>
+                    <span class="user-role" id="user-display-role">Doctor</span>
+                </div>
+                <button class="btn-logout" id="btn-logout" title="Log Out">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </div>
             
             <nav class="sidebar-menu">
                 <a href="#" class="menu-item active" id="menu-overview">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
-                    <span>Overview</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <span>Patient Search</span>
                 </a>
                 <a href="#" class="menu-item" id="menu-patients">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>Patient List</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span>About System</span>
+                </a>
+                <a href="#" class="menu-item hidden" id="menu-requests">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                    <span>Access Requests</span>
                 </a>
             </nav>
             
             <div class="sidebar-footer">
-                <div class="footer-info" style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); opacity: 0.8;">
-                    <span>System Version: v0.1.0</span>
+                <div class="prototype-callout">
+                    <div class="prototype-callout-title">Prototype System</div>
+                    <div class="prototype-callout-text">
+                        Decision-support tool<br>
+                        Not for clinical diagnosis<br>
+                        Historical US data only
+                    </div>
                 </div>
             </div>
         </aside>
@@ -47,402 +133,428 @@
         <!-- Main Content Area -->
         <main class="main-content">
             
-            <!-- VIEW 1: OVERVIEW SCREEN (Matching Mockup Image 1) -->
-            <div id="overview-view" class="content-view">
+            <!-- VIEW 4: ADMIN ACCESS REQUESTS SCREEN -->
+            <div id="requests-view" class="content-view hidden">
                 <header class="content-header">
-                    <h2>DiabCare AI — Readmission Risk</h2>
-                    <p class="subtitle">Clinical overview of readmission probabilities for managed patient populations</p>
+                    <div class="content-header-title">
+                        <h2>Pending Doctor Access Requests</h2>
+                    </div>
                 </header>
                 
-                <!-- Metric Cards -->
-                <section class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-info">
-                            <span class="metric-label">TOTAL SCREENED</span>
-                            <span class="metric-value">1,240</span>
-                            <span class="metric-trend text-green">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                                +12% this month
-                            </span>
-                        </div>
-                        <div class="metric-icon bg-blue-light">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                        </div>
+                <section class="card-patient-selection">
+                    <div id="requests-empty-state" class="detail-spinner-view hidden" style="padding: 4rem 2rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <h3 style="margin-top: 1rem; font-size: 1.1rem;">No Pending Requests</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.88rem; max-width: 320px; margin: 0.25rem auto 0;">All access requests have been processed. New requests will appear here.</p>
                     </div>
-                    
-                    <div class="metric-card">
-                        <div class="metric-info">
-                            <span class="metric-label">HIGH RISK</span>
-                            <span class="metric-value">142</span>
-                            <span class="metric-trend text-red">
-                                <span class="bullet-dot"></span>
-                                IMMEDIATE ACTION NEEDED
-                            </span>
-                        </div>
-                        <div class="metric-icon bg-red-light">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        </div>
-                    </div>
-                </section>
-                
-                <!-- Patient Screening Selection Card -->
-                <section class="card select-patient-card">
-                    <div class="card-header-clean">
-                        <h3>Select Patient for Screening</h3>
-                    </div>
-                    <div class="search-bar-container">
-                        <div class="search-input-wrapper">
-                            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" id="patient-search" placeholder="Search by Patient ID (e.g., P-8821), Name...">
-                        </div>
-                    </div>
-                    <div class="patient-list-container">
-                        <div id="patient-list-loading" class="list-spinner-container">
-                            <div class="spinner-small"></div>
-                            <span>Loading patient records...</span>
-                        </div>
-                        <div id="patient-list" class="patient-list">
-                            <!-- Populated dynamically -->
-                        </div>
+
+                    <div id="requests-table-container" class="patient-table-container">
+                        <table class="patient-table">
+                            <thead>
+                                <tr>
+                                    <th>Doctor Name</th>
+                                    <th>Email Address</th>
+                                    <th>Requested At</th>
+                                    <th style="width: 220px; text-align: center;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="requests-table-body">
+                                <!-- Dynamically populated by JS -->
+                            </tbody>
+                        </table>
                     </div>
                 </section>
             </div>
 
-            <!-- VIEW 2: PATIENT DETAIL SCREEN (Matching Mockup Image 2 & 3 & 4) -->
-            <div id="detail-view" class="content-view hidden">
-                
-                <!-- Top Tabs & User Bar (Matching Header in Mockups) -->
-                <header class="detail-top-nav">
-                    <div class="logo-area-nav">
-                        <span class="logo-text-bold">DiabCare AI</span>
+            <!-- VIEW 1: PATIENT SELECTION / OVERVIEW SCREEN -->
+            <div id="overview-view" class="content-view">
+                <header class="content-header">
+                    <div class="content-header-title">
+                        <h2>Select a patient to assess readmission risk</h2>
                     </div>
-                    <nav class="nav-links">
-                        <a href="#" class="nav-link active" id="nav-patients">Patients</a>
-                    </nav>
-                    <div class="user-profile-actions">
-                        <div class="nav-icon-btn-static">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                            <span class="notification-badge-dot"></span>
+                    <button class="btn-new-screening-top btn-new-screening">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <span>+ New Screening</span>
+                    </button>
+                </header>
+                
+                <!-- Patient Screening Selection Card -->
+                <section class="card-patient-selection">
+                    <div class="search-section">
+                        <div class="search-input-wrapper">
+                            <input type="text" id="patient-search" placeholder="Search by Patient ID...">
                         </div>
-                        <div class="nav-icon-btn-static">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <button class="btn-search">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </button>
+                    </div>
+                    <div class="showing-count-bar" id="patient-showing-label">
+                        Showing 6 demo patients
+                    </div>
+                    
+                    <div class="patient-table-container">
+                        <div id="patient-list-loading" class="list-spinner-container">
+                            <div class="spinner-small"></div>
+                            <span style="margin-left: 0.5rem;">Loading patient records...</span>
                         </div>
-                        <div class="user-avatar-wrapper">
-                            <img src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=100" alt="Doctor Profile" class="user-avatar">
+                        <table class="patient-table">
+                            <thead>
+                                <tr>
+                                    <th>Patient ID</th>
+                                    <th>Age Group</th>
+                                    <th>Gender</th>
+                                    <th>Last Encounter</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patient-table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="encounters-footer">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="21" x2="9" y2="9"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                        <span>101,766 historical encounters • UCI Diabetes 130-US Hospitals dataset • Prototype</span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VIEW 2: PATIENT DETAIL SCREEN -->
+            <div id="detail-view" class="content-view hidden" style="padding: 0;">
+                
+                <!-- Dark Header Bar -->
+                <header class="detail-header-bar">
+                    <a href="#" id="back-link" class="back-link-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                        <span>Back to Patient Search</span>
+                    </a>
+                    <div class="patient-info-row">
+                        <div class="patient-id-block">
+                            <span class="patient-id-label">Patient ID</span>
+                            <span class="patient-id-value" id="detail-patient-id">P-1001</span>
+                        </div>
+                        <div class="patient-meta-item">
+                            <span class="patient-meta-label">Age Group</span>
+                            <span class="patient-meta-value" id="detail-age-group">65-70</span>
+                        </div>
+                        <div class="patient-meta-item">
+                            <span class="patient-meta-label">Gender</span>
+                            <span class="patient-meta-value" id="detail-gender">Male</span>
+                        </div>
+                        <div class="patient-meta-item">
+                            <span class="patient-meta-label">Last Encounter</span>
+                            <span class="patient-meta-value" id="detail-last-encounter">Apr 24, 2025</span>
                         </div>
                     </div>
                 </header>
                 
-                <!-- Back Link and Title -->
-                <div class="detail-header-sub">
-                    <a href="#" id="back-link" class="back-link-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-                        <span>Dashboard</span>
-                    </a>
-                    <h2 class="patient-id-title" id="detail-patient-title">Patient ID: P-8821</h2>
-                    
-                    <span id="detail-clinical-intel" class="clinical-intel-tag">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                        <span>Clinical Intelligence</span>
-                    </span>
-                </div>
-                
                 <!-- Detail Screen Content Spinner -->
-                <div id="detail-loading-state" class="empty-state-large">
+                <div id="detail-loading-state" class="detail-spinner-view">
                     <div class="spinner"></div>
                     <h3>Running Diagnostics</h3>
                     <p>Executing preprocessor, LightGBM classifier, and SHAP trees...</p>
                 </div>
 
                 <!-- Main Details Columns -->
-                <div id="detail-results-container" class="detail-columns-grid hidden">
-                    
-                    <!-- Left Column: Circular gauge risk card -->
-                    <div class="card detail-risk-card" id="detail-risk-card-bg">
-                        <h3>30-Day Readmission Risk</h3>
-                        <div class="circular-progress-wrapper">
-                            <svg class="progress-ring-svg" viewBox="0 0 200 200">
-                                <circle class="progress-ring-bg" cx="100" cy="100" r="82"></circle>
-                                <circle id="progress-ring-fill" class="progress-ring-fill" cx="100" cy="100" r="82" stroke-dasharray="515.22" stroke-dashoffset="515.22"></circle>
-                            </svg>
-                            <div class="progress-ring-content">
-                                <span id="detail-risk-percent" class="risk-percent-value">78%</span>
-                                <span id="detail-risk-badge" class="risk-badge-text-inner">HIGH RISK</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Right Column: Priority banner + Top factors list -->
-                    <div class="detail-actions-column">
+                <div id="detail-results-container" class="detail-grid-layout hidden">
+                    <div class="detail-columns-grid">
                         
-                        <!-- Dynamic Priority Alert Banner (Low / Moderate / High) -->
-                        <div id="priority-alert-banner" class="priority-banner-box banner-high">
-                            <span class="priority-banner-icon" id="priority-banner-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                            </span>
-                            <div class="priority-banner-text">
-                                <h4 id="priority-banner-title">HIGH PRIORITY</h4>
-                                <p id="priority-banner-description">Prioritize for post-discharge follow-up. Clinical review recommended within 48 hours.</p>
+                        <!-- Left Column: Circular gauge risk card -->
+                        <div class="detail-risk-card">
+                            <h3>30-Day Readmission Risk</h3>
+                            <div class="circular-gauge-container">
+                                <svg class="gauge-svg" viewBox="0 0 220 220">
+                                    <path class="gauge-track" d="M 20,110 A 90,90 0 0,1 200,110" />
+                                    <path id="progress-ring-fill" class="gauge-fill" d="M 20,110 A 90,90 0 0,1 200,110" />
+                                </svg>
+                                <div class="gauge-center-text">
+                                    <span id="detail-risk-percent" class="risk-percent-value">78%</span>
+                                    <span id="detail-risk-badge" class="risk-badge-text-inner">HIGH RISK</span>
+                                </div>
                             </div>
+                            <div class="gauge-model-label">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                <span>LightGBM Model Prediction</span>
+                            </div>
+                            <div class="gauge-model-description">
+                                This is a risk estimate of readmission within 30 days of discharge.
+                             </div>
                         </div>
                         
-                        <!-- Top Risk Factors Card -->
-                        <div class="card factors-list-card">
+                        <!-- Right Column: SHAP factors list -->
+                        <div class="factors-list-card">
                             <div class="factors-card-header">
-                                <h3>Top Risk Factors</h3>
+                                <h3>Why this score?</h3>
+                                <span class="subtitle">Top factors contributing to this prediction (SHAP)</span>
                             </div>
                             <div id="detail-factors-list" class="factors-list-container">
                                 <!-- Populated dynamically -->
                             </div>
                         </div>
-                        
-                        <!-- Bottom Action Buttons -->
                     </div>
-                </div>
+                    
+                    <!-- Dynamic Priority Alert Banner (Low / Moderate / High) -->
+                    <div id="priority-alert-banner" class="priority-alert-box alert-high">
+                        <div class="priority-alert-icon" id="priority-banner-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                        <div class="priority-alert-text">
+                            <span class="priority-alert-title" id="priority-banner-title">HIGH FOLLOW-UP PRIORITY</span>
+                            <span class="priority-alert-desc" id="priority-banner-description">Prioritize this patient for post-discharge follow-up.</span>
+                        </div>
+                    </div>
 
-                <!-- Subtle disclaimer -->
-                <div class="tool-sub-disclaimer">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <span>This is a decision-support tool. It does not constitute a medical diagnosis or clinically validated risk assessment.</span>
+                    <!-- Blue Disclaimer Box -->
+                    <div class="disclaimer-alert-box">
+                        <div class="disclaimer-alert-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        </div>
+                        <div>
+                            Prototype decision-support tool. Not a medical diagnosis or clinically validated risk assessment. Based on historical US hospital data.
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- VIEW 3: NEW PATIENT RISK SCREENING FORM -->
             <div id="new-patient-view" class="content-view hidden">
                  <!-- Header -->
-                 <header class="content-header">
-                     <div class="detail-header-sub" style="padding-left: 0; margin-bottom: 1rem;">
-                         <a href="#" id="new-patient-back" class="back-link-btn">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-                             <span>Dashboard</span>
-                         </a>
-                         <h2 class="patient-id-title" style="margin-left: 1rem;">New Screening Profile</h2>
+                 <header class="content-header" style="margin-bottom: 1.5rem;">
+                     <div class="content-header-title">
+                         <div style="display: flex; align-items: center; gap: 1rem;">
+                             <a href="#" id="new-patient-back" class="back-link-btn" style="border: 1px solid #cbd5e1; background: #fff; padding: 0.4rem 0.8rem; border-radius: var(--border-radius-md); box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                                 <span>Dashboard</span>
+                             </a>
+                             <h2 style="font-size: 1.7rem; letter-spacing: -0.5px;">New Screening Profile</h2>
+                         </div>
+                         <p class="subtitle" style="margin-top: 0.5rem;">Input patient clinical parameters to run 30-day hospital readmission risk prediction</p>
                      </div>
-                     <p class="subtitle">Input patient clinical parameters to run 30-day hospital readmission risk prediction</p>
                  </header>
 
                  <!-- Form Card -->
                  <div class="card form-card">
                      <div id="form-error-banner" class="form-error-message"></div>
                      <form id="new-patient-form">
-                         <!-- Grid columns -->
-                         <div class="form-grid">
-                             <!-- SECTION 1: DEMOGRAPHICS -->
-                             <h4 class="form-section-title">Demographics & Administrative</h4>
-                             
-                             <div class="form-group">
-                                 <label for="input-name">Patient Name</label>
-                                 <input type="text" id="input-name" class="form-control" name="name" placeholder="e.g. Sarah Connor" required>
-                             </div>
+                          <!-- Grid columns -->
+                          <div class="form-grid">
+                              <!-- SECTION 1: DEMOGRAPHICS -->
+                              <h4 class="form-section-title">Demographics & Administrative</h4>
+                              
+                              <div class="form-group">
+                                  <label for="input-name">Patient Name</label>
+                                  <input type="text" id="input-name" class="form-control" name="name" placeholder="e.g. Sarah Connor" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-race">Race</label>
-                                 <select id="input-race" class="form-control" name="race" required>
-                                     <option value="Caucasian">Caucasian</option>
-                                     <option value="AfricanAmerican">AfricanAmerican</option>
-                                     <option value="Asian">Asian</option>
-                                     <option value="Hispanic">Hispanic</option>
-                                     <option value="Other">Other</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-race">Race</label>
+                                  <select id="input-race" class="form-control" name="race" required>
+                                      <option value="Caucasian">Caucasian</option>
+                                      <option value="AfricanAmerican">AfricanAmerican</option>
+                                      <option value="Asian">Asian</option>
+                                      <option value="Hispanic">Hispanic</option>
+                                      <option value="Other">Other</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-gender">Gender</label>
-                                 <select id="input-gender" class="form-control" name="gender" required>
-                                     <option value="Female">Female</option>
-                                     <option value="Male">Male</option>
-                                     <option value="Unknown/Invalid">Unknown/Invalid</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-gender">Gender</label>
+                                  <select id="input-gender" class="form-control" name="gender" required>
+                                      <option value="Female">Female</option>
+                                      <option value="Male">Male</option>
+                                      <option value="Unknown/Invalid">Unknown/Invalid</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-age">Age Cohort</label>
-                                 <select id="input-age" class="form-control" name="age" required>
-                                     <option value="[0-10)">[0-10)</option>
-                                     <option value="[10-20)">[10-20)</option>
-                                     <option value="[20-30)">[20-30)</option>
-                                     <option value="[30-40)">[30-40)</option>
-                                     <option value="[40-50)">[40-50)</option>
-                                     <option value="[50-60)">[50-60)</option>
-                                     <option value="[60-70)">[60-70)</option>
-                                     <option value="[70-80)" selected>[70-80)</option>
-                                     <option value="[80-90)">[80-90)</option>
-                                     <option value="[90-100)">[90-100)</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-age">Age Cohort</label>
+                                  <select id="input-age" class="form-control" name="age" required>
+                                      <option value="[0-10)">[0-10)</option>
+                                      <option value="[10-20)">[10-20)</option>
+                                      <option value="[20-30)">[20-30)</option>
+                                      <option value="[30-40)">[30-40)</option>
+                                      <option value="[40-50)">[40-50)</option>
+                                      <option value="[50-60)">[50-60)</option>
+                                      <option value="[60-70)">[60-70)</option>
+                                      <option value="[70-80)" selected>[70-80)</option>
+                                      <option value="[80-90)">[80-90)</option>
+                                      <option value="[90-100)">[90-100)</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-admission-type">Admission Type</label>
-                                 <select id="input-admission-type" class="form-control" name="admission_type_id" required>
-                                     <option value="1">Emergency admission</option>
-                                     <option value="2">Urgent admission</option>
-                                     <option value="3">Elective admission</option>
-                                     <option value="5">Admission type not available</option>
-                                     <option value="6">Admission type not recorded</option>
-                                     <option value="7">Trauma center admission</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-admission-type">Admission Type</label>
+                                  <select id="input-admission-type" class="form-control" name="admission_type_id" required>
+                                      <option value="1">Emergency admission</option>
+                                      <option value="2">Urgent admission</option>
+                                      <option value="3">Elective admission</option>
+                                      <option value="5">Admission type not available</option>
+                                      <option value="6">Admission type not recorded</option>
+                                      <option value="7">Trauma center admission</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-discharge-disposition">Discharge Disposition</label>
-                                 <select id="input-discharge-disposition" class="form-control" name="discharge_disposition_id" required>
-                                     <option value="1">Discharged to home</option>
-                                     <option value="2">Transferred to another short-term hospital</option>
-                                     <option value="3">Transferred to skilled nursing facility (SNF)</option>
-                                     <option value="4">Transferred to intermediate care facility</option>
-                                     <option value="5">Transferred to another inpatient care institution</option>
-                                     <option value="6">Discharged to home with home health service</option>
-                                     <option value="7">Left against medical advice</option>
-                                     <option value="11">Patient expired during stay</option>
-                                     <option value="18">Discharge disposition not recorded</option>
-                                     <option value="22">Transferred to rehab facility</option>
-                                     <option value="23">Transferred to long-term care hospital</option>
-                                     <option value="25">Discharge disposition not mapped</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-discharge-disposition">Discharge Disposition</label>
+                                  <select id="input-discharge-disposition" class="form-control" name="discharge_disposition_id" required>
+                                      <option value="1">Discharged to home</option>
+                                      <option value="2">Transferred to another short-term hospital</option>
+                                      <option value="3">Transferred to skilled nursing facility (SNF)</option>
+                                      <option value="4">Transferred to intermediate care facility</option>
+                                      <option value="5">Transferred to another inpatient care institution</option>
+                                      <option value="6">Discharged to home with home health service</option>
+                                      <option value="7">Left against medical advice</option>
+                                      <option value="11">Patient expired during stay</option>
+                                      <option value="18">Discharge disposition not recorded</option>
+                                      <option value="22">Transferred to rehab facility</option>
+                                      <option value="23">Transferred to long-term care hospital</option>
+                                      <option value="25">Discharge disposition not mapped</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-admission-source">Admission Source</label>
-                                 <select id="input-admission-source" class="form-control" name="admission_source_id" required>
-                                     <option value="1">Referred by physician</option>
-                                     <option value="2">Referred by clinic</option>
-                                     <option value="7">Admitted via emergency room</option>
-                                     <option value="9">Admission source not available</option>
-                                     <option value="17">Admission source not recorded</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-admission-source">Admission Source</label>
+                                  <select id="input-admission-source" class="form-control" name="admission_source_id" required>
+                                      <option value="1">Referred by physician</option>
+                                      <option value="2">Referred by clinic</option>
+                                      <option value="7">Admitted via emergency room</option>
+                                      <option value="9">Admission source not available</option>
+                                      <option value="17">Admission source not recorded</option>
+                                  </select>
+                              </div>
 
-                             <!-- SECTION 2: HOSPITALIZATION DETAILS -->
-                             <h4 class="form-section-title">Hospitalization Stay Statistics</h4>
+                              <!-- SECTION 2: HOSPITALIZATION DETAILS -->
+                              <h4 class="form-section-title">Hospitalization Stay Statistics</h4>
 
-                             <div class="form-group">
-                                 <label for="input-time-hospital">Length of Hospital Stay (1-14 days)</label>
-                                 <input type="number" id="input-time-hospital" class="form-control" name="time_in_hospital" min="1" max="14" value="3" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-time-hospital">Length of Hospital Stay (1-14 days)</label>
+                                  <input type="number" id="input-time-hospital" class="form-control" name="time_in_hospital" min="1" max="14" value="3" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-num-lab">Number of Lab Procedures (1-150)</label>
-                                 <input type="number" id="input-num-lab" class="form-control" name="num_lab_procedures" min="1" max="150" value="40" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-num-lab">Number of Lab Procedures (1-150)</label>
+                                  <input type="number" id="input-num-lab" class="form-control" name="num_lab_procedures" min="1" max="150" value="40" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-num-procedures">Number of Non-Lab Procedures (0-10)</label>
-                                 <input type="number" id="input-num-procedures" class="form-control" name="num_procedures" min="0" max="10" value="0" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-num-procedures">Number of Non-Lab Procedures (0-10)</label>
+                                  <input type="number" id="input-num-procedures" class="form-control" name="num_procedures" min="0" max="10" value="0" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-num-medications">Number of Medications (1-100)</label>
-                                 <input type="number" id="input-num-medications" class="form-control" name="num_medications" min="1" max="100" value="15" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-num-medications">Number of Medications (1-100)</label>
+                                  <input type="number" id="input-num-medications" class="form-control" name="num_medications" min="1" max="100" value="15" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-num-diagnoses">Number of Diagnoses (1-16)</label>
-                                 <input type="number" id="input-num-diagnoses" class="form-control" name="number_diagnoses" min="1" max="16" value="9" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-num-diagnoses">Number of Diagnoses (1-16)</label>
+                                  <input type="number" id="input-num-diagnoses" class="form-control" name="number_diagnoses" min="1" max="16" value="9" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-prior-outpatient">Prior Outpatient Visits</label>
-                                 <input type="number" id="input-prior-outpatient" class="form-control" name="number_outpatient" min="0" value="0" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-prior-outpatient">Prior Outpatient Visits</label>
+                                  <input type="number" id="input-prior-outpatient" class="form-control" name="number_outpatient" min="0" value="0" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-prior-emergency">Prior Emergency Visits</label>
-                                 <input type="number" id="input-prior-emergency" class="form-control" name="number_emergency" min="0" value="0" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-prior-emergency">Prior Emergency Visits</label>
+                                  <input type="number" id="input-prior-emergency" class="form-control" name="number_emergency" min="0" value="0" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-prior-inpatient">Prior Inpatient Visits</label>
-                                 <input type="number" id="input-prior-inpatient" class="form-control" name="number_inpatient" min="0" value="0" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-prior-inpatient">Prior Inpatient Visits</label>
+                                  <input type="number" id="input-prior-inpatient" class="form-control" name="number_inpatient" min="0" value="0" required>
+                              </div>
 
-                             <!-- SECTION 3: DIAGNOSIS CODES -->
-                             <h4 class="form-section-title">Clinical Diagnoses (ICD-9 Codes)</h4>
-                             
-                             <div class="form-group">
-                                 <label for="input-diag-1">Primary Diagnosis (ICD-9 code, e.g. 250, 428)</label>
-                                 <input type="text" id="input-diag-1" class="form-control" name="diag_1" value="250" placeholder="e.g. 250" required>
-                             </div>
+                              <!-- SECTION 3: DIAGNOSIS CODES -->
+                              <h4 class="form-section-title">Clinical Diagnoses (ICD-9 Codes)</h4>
+                              
+                              <div class="form-group">
+                                  <label for="input-diag-1">Primary Diagnosis (ICD-9 code, e.g. 250, 428)</label>
+                                  <input type="text" id="input-diag-1" class="form-control" name="diag_1" value="250" placeholder="e.g. 250" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-diag-2">Secondary Diagnosis (ICD-9 code)</label>
-                                 <input type="text" id="input-diag-2" class="form-control" name="diag_2" value="428" placeholder="e.g. 428" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-diag-2">Secondary Diagnosis (ICD-9 code)</label>
+                                  <input type="text" id="input-diag-2" class="form-control" name="diag_2" value="428" placeholder="e.g. 428" required>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-diag-3">Additional Diagnosis (ICD-9 code)</label>
-                                 <input type="text" id="input-diag-3" class="form-control" name="diag_3" value="276" placeholder="e.g. 276" required>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-diag-3">Additional Diagnosis (ICD-9 code)</label>
+                                  <input type="text" id="input-diag-3" class="form-control" name="diag_3" value="276" placeholder="e.g. 276" required>
+                              </div>
 
-                             <!-- SECTION 4: LAB RESULTS & MEDICATIONS -->
-                             <h4 class="form-section-title">Lab Results & Medications</h4>
+                              <!-- SECTION 4: LAB RESULTS & MEDICATIONS -->
+                              <h4 class="form-section-title">Lab Results & Medications</h4>
 
-                             <div class="form-group">
-                                 <label for="input-max-glu">Max Glucose Serum</label>
-                                 <select id="input-max-glu" class="form-control" name="max_glu_serum">
-                                     <option value="None">None (not tested)</option>
-                                     <option value="Norm">Norm (normal)</option>
-                                     <option value=">200">>200 mg/dL (elevated)</option>
-                                     <option value=">300">>300 mg/dL (very high)</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-max-glu">Max Glucose Serum</label>
+                                  <select id="input-max-glu" class="form-control" name="max_glu_serum">
+                                      <option value="None">None (not tested)</option>
+                                      <option value="Norm">Norm (normal)</option>
+                                      <option value=">200">>200 mg/dL (elevated)</option>
+                                      <option value=">300">>300 mg/dL (very high)</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-a1cresult">HbA1c Result</label>
-                                 <select id="input-a1cresult" class="form-control" name="A1Cresult">
-                                     <option value="None">None (not tested)</option>
-                                     <option value="Norm">Norm (normal)</option>
-                                     <option value=">7">>7% (elevated)</option>
-                                     <option value=">8">>8% (high)</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-a1cresult">HbA1c Result</label>
+                                  <select id="input-a1cresult" class="form-control" name="A1Cresult">
+                                      <option value="None">None (not tested)</option>
+                                      <option value="Norm">Norm (normal)</option>
+                                      <option value=">7">>7% (elevated)</option>
+                                      <option value=">8">>8% (high)</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-insulin">Insulin Dosage change</label>
-                                 <select id="input-insulin" class="form-control" name="insulin">
-                                     <option value="No">No (not prescribed)</option>
-                                     <option value="Steady">Steady (maintained)</option>
-                                     <option value="Up">Up (increased)</option>
-                                     <option value="Down">Down (decreased)</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-insulin">Insulin Dosage change</label>
+                                  <select id="input-insulin" class="form-control" name="insulin">
+                                      <option value="No">No (not prescribed)</option>
+                                      <option value="Steady">Steady (maintained)</option>
+                                      <option value="Up">Up (increased)</option>
+                                      <option value="Down">Down (decreased)</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-metformin">Metformin Dosage change</label>
-                                 <select id="input-metformin" class="form-control" name="metformin">
-                                     <option value="No">No (not prescribed)</option>
-                                     <option value="Steady">Steady (maintained)</option>
-                                     <option value="Up">Up (increased)</option>
-                                     <option value="Down">Down (decreased)</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-metformin">Metformin Dosage change</label>
+                                  <select id="input-metformin" class="form-control" name="metformin">
+                                      <option value="No">No (not prescribed)</option>
+                                      <option value="Steady">Steady (maintained)</option>
+                                      <option value="Up">Up (increased)</option>
+                                      <option value="Down">Down (decreased)</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-diabetes-med">On Diabetes Medication</label>
-                                 <select id="input-diabetes-med" class="form-control" name="diabetesMed" required>
-                                     <option value="Yes">Yes</option>
-                                     <option value="No">No</option>
-                                 </select>
-                             </div>
+                              <div class="form-group">
+                                  <label for="input-diabetes-med">On Diabetes Medication</label>
+                                  <select id="input-diabetes-med" class="form-control" name="diabetesMed" required>
+                                      <option value="Yes">Yes</option>
+                                      <option value="No">No</option>
+                                  </select>
+                              </div>
 
-                             <div class="form-group">
-                                 <label for="input-change">Medication Regimen Changed</label>
-                                 <select id="input-change" class="form-control" name="change" required>
-                                     <option value="Ch">Ch (Changed)</option>
-                                     <option value="No">No (Not changed)</option>
-                                 </select>
-                             </div>
-                         </div>
+                              <div class="form-group">
+                                  <label for="input-change">Medication Regimen Changed</label>
+                                  <select id="input-change" class="form-control" name="change" required>
+                                      <option value="Ch">Ch (Changed)</option>
+                                      <option value="No">No (Not changed)</option>
+                                  </select>
+                              </div>
+                          </div>
 
-                         <!-- Form Submit Buttons -->
-                         <div class="form-submit-container">
-                             <button type="button" id="form-cancel-btn" class="btn btn-cancel">Cancel</button>
-                             <button type="submit" class="btn btn-submit">Run Prediction</button>
-                         </div>
+                          <!-- Form Submit Buttons -->
+                          <div class="form-submit-container">
+                              <button type="button" id="form-cancel-btn" class="btn-cancel">Cancel</button>
+                              <button type="submit" class="btn-submit">Run Prediction</button>
+                          </div>
                      </form>
                  </div>
             </div>
 
-            <!-- Global Footer / Honesty Constraints (Rendered discreetly at the screen bottom) -->
+            <!-- Global Footer / Honesty Constraints -->
             <footer class="app-footer-disclaimer">
                 <div class="disclaimer-grid">
                     <div class="disclaimer-col">
@@ -460,6 +572,6 @@
     </div>
 
     <!-- JS Scripts -->
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>

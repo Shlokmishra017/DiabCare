@@ -23,7 +23,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # pyrefly: ignore [missing-import]
 import joblib
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI, HTTPException
+from datetime import datetime, timedelta, timezone
+import jwt
+import bcrypt
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
@@ -40,6 +44,10 @@ from Src.database import (
     get_patient,
     init_db,
     save_new_patient,
+    get_user_by_email,
+    save_new_user,
+    get_pending_requests,
+    update_user_status,
 )
 from Src.explain import explain_patient
 
@@ -57,6 +65,34 @@ app = FastAPI(
     description="30-day hospital readmission risk predictor for diabetic patients.",
     version="0.1.0",
 )
+
+# ---------------------------------------------------------------------------
+# Security & JWT Configuration
+# ---------------------------------------------------------------------------
+JWT_SECRET = "diabcare_secret_key_123456"
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+security = HTTPBearer()
+
+def create_access_token(data: dict) -> str:
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id: str = payload.get("user_id")
+        role: str = payload.get("role")
+        if user_id is None or role is None:
+            raise HTTPException(status_code=401, detail="Invalid token claims.")
+        return {"user_id": user_id, "role": role}
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
 # CORS — allow all origins during development (frontend is a separate static app)
 app.add_middleware(
@@ -92,6 +128,43 @@ def startup_event() -> None:
 # ---------------------------------------------------------------------------
 # Request / response models (per fixed API contract in README)
 # ---------------------------------------------------------------------------
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class RequestActionRequest(BaseModel):
+    user_id: str
+    action: str
+
+
+class PendingRequestListItem(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: str
+    created_at: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginUserResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: LoginUserResponse
+
 
 class PredictRequest(BaseModel):
     patient_id: str
@@ -173,8 +246,114 @@ class PatientListItem(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@app.post("/auth/login", response_model=LoginResponse, summary="User login")
+def login(request: LoginRequest) -> LoginResponse:
+    email = request.email.strip().lower()
+    password = request.password
+
+    user = get_user_by_email(DB_PATH, email)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    # Verify password hash using bcrypt
+    hashed_bytes = user["password_hash"].encode('utf-8')
+    if not bcrypt.checkpw(password.encode('utf-8'), hashed_bytes):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    # Check account approval status
+    if user["status"] == "pending":
+        raise HTTPException(
+            status_code=401,
+            detail="Account pending approval by administrator."
+        )
+    elif user["status"] == "rejected":
+        raise HTTPException(
+            status_code=401,
+            detail="Access request has been rejected."
+        )
+
+    token_data = {"user_id": user["user_id"], "role": user["role"]}
+    token = create_access_token(token_data)
+
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        user=LoginUserResponse(
+            user_id=user["user_id"],
+            name=user["name"],
+            email=user["email"],
+            role=user["role"]
+        )
+    )
+
+
+@app.post("/auth/register", summary="Register as a new doctor")
+def register(request: RegisterRequest) -> dict:
+    name = request.name.strip()
+    email = request.email.strip().lower()
+    password = request.password
+
+    if not name or not email or not password:
+        raise HTTPException(status_code=400, detail="All fields (name, email, password) are required.")
+
+    # Check email uniqueness
+    existing_user = get_user_by_email(DB_PATH, email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email is already registered.")
+
+    # Create random user ID
+    user_id = f"U-{uuid.uuid4().hex[:6].upper()}"
+
+    # Hash password using bcrypt
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+    # Save to database with status 'pending' and role 'doctor'
+    try:
+        save_new_user(DB_PATH, user_id, name, email, pwd_hash, "doctor", "pending")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error during registration: {str(e)}")
+
+    return {"message": "Access request submitted. Pending administrator approval."}
+
+
+@app.get("/admin/requests", response_model=list[PendingRequestListItem], summary="List pending doctor access requests")
+def list_pending_requests(current_user: dict = Depends(get_current_user)) -> list[PendingRequestListItem]:
+    if current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Only administrators can view pending registration requests."
+        )
+    rows = get_pending_requests(DB_PATH)
+    return [PendingRequestListItem(**r) for r in rows]
+
+
+@app.post("/admin/requests/action", summary="Approve or reject doctor access request")
+def action_pending_request(request: RequestActionRequest, current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Only administrators can process registration requests."
+        )
+
+    user_id = request.user_id.strip()
+    action = request.action.strip().lower()
+
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'.")
+
+    status = "approved" if action == "approve" else "rejected"
+    try:
+        update_user_status(DB_PATH, user_id, status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error updating status: {str(e)}")
+
+    return {"message": f"User {user_id} has been {status}."}
+
+
 @app.post("/predict", response_model=PredictResponse, summary="Predict 30-day readmission risk")
-def predict(request: PredictRequest) -> PredictResponse:
+def predict(request: PredictRequest, current_user: dict = Depends(get_current_user)) -> PredictResponse:
     """
     Given a patient_id, return:
     - risk_percent      : 0-100 float
@@ -216,7 +395,7 @@ def predict(request: PredictRequest) -> PredictResponse:
 
 
 @app.post("/predict_new", response_model=PredictResponse, summary="Predict 30-day readmission risk for a new patient")
-def predict_new(request: PredictNewRequest) -> PredictResponse:
+def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_current_user)) -> PredictResponse:
     """
     Given raw patient feature values as JSON, return prediction results:
     - risk_percent      : 0-100 float
@@ -304,7 +483,7 @@ def predict_new(request: PredictNewRequest) -> PredictResponse:
 
 
 @app.get("/patients", response_model=list[PatientListItem], summary="List available patients")
-def patients() -> list[PatientListItem]:
+def patients(current_user: dict = Depends(get_current_user)) -> list[PatientListItem]:
     """
     Return all patient IDs and their one-line summaries.
     Used by the frontend to populate the search / dropdown.
