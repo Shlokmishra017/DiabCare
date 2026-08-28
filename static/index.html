@@ -177,6 +177,11 @@
                         <span>+ New Screening</span>
                     </button>
                 </header>
+
+                <!-- Dashboard Stats Summary Cards -->
+                <div class="dashboard-stats-container" id="dashboard-stats-container">
+                    <!-- Populated dynamically via JS -->
+                </div>
                 
                 <!-- Patient Screening Selection Card -->
                 <section class="card-patient-selection">
@@ -187,6 +192,17 @@
                         <button class="btn-search">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         </button>
+                        <!-- Sorting controls -->
+                        <div class="sorting-controls">
+                            <span class="sorting-indicator" id="sorting-indicator">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                Sorted by Risk
+                            </span>
+                            <select id="sort-select" class="sort-select">
+                                <option value="risk">Sort by: Risk Level</option>
+                                <option value="id">Sort by: Patient ID</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="showing-count-bar" id="patient-showing-label">
                         Showing 6 demo patients
@@ -279,6 +295,14 @@
                             </div>
                             <div class="gauge-model-description">
                                 This is a risk estimate of readmission within 30 days of discharge.
+                             </div>
+                             <div class="follow-up-status-section">
+                                 <span class="follow-up-status-label">Clinical Follow-Up Status</span>
+                                 <div class="follow-up-status-buttons" id="follow-up-status-buttons">
+                                     <button class="btn-status-toggle" data-status="Pending">Pending</button>
+                                     <button class="btn-status-toggle" data-status="Scheduled">Scheduled</button>
+                                     <button class="btn-status-toggle" data-status="Completed">Completed</button>
+                                 </div>
                              </div>
                         </div>
                         

@@ -4,28 +4,28 @@
 
 /* Color system & variables */
 :root {
-    --medical-red: #dc2626; /* Primary medical red */
-    --medical-red-dark: #b91c1c; /* Darker red for hover states */
-    --medical-red-deep: #991b1b; /* Deep medical red */
-    --medical-red-light: #fef2f2; /* Light rose backdrop/tint */
-    --medical-red-border: #fca5a5;
+    --medical-red: #7a1f2b; /* Primary medical red -> Burgundy */
+    --medical-red-dark: #631822; /* Darker red for hover states -> Darker Burgundy */
+    --medical-red-deep: #4c1018; /* Deep medical red -> Deep Burgundy */
+    --medical-red-light: #fdf2f4; /* Light rose backdrop/tint -> Light Burgundy tint */
+    --medical-red-border: #f3cbd1;
 
-    --navy-dark: #dc2626; /* Kept for legacy selector compatibility */
-    --navy-hover: #b91c1c;
-    --navy-active: #991b1b;
-    --navy-light: #fef2f2;
+    --navy-dark: #7a1f2b; /* Kept for legacy selector compatibility */
+    --navy-hover: #9c3a46; /* Lighter burgundy tint */
+    --navy-active: #9c3a46;
+    --navy-light: #fdf2f4;
     
     --bg-workspace: #f8fafc; /* Crisp clean workspace backdrop */
     --card-bg: #ffffff;
     --card-border: #e2e8f0;
-    --card-shadow: 0 4px 12px rgba(220, 38, 38, 0.04), 0 1px 3px rgba(0, 0, 0, 0.03);
+    --card-shadow: 0 4px 12px rgba(122, 31, 43, 0.04), 0 1px 3px rgba(0, 0, 0, 0.03);
     
     --text-primary: #0f172a; /* Slate 900 */
     --text-secondary: #475569; /* Slate 600 */
     --text-muted: #94a3b8; /* Slate 400 */
     
-    --accent-red: #dc2626;
-    --accent-red-hover: #b91c1c;
+    --accent-red: #7a1f2b;
+    --accent-red-hover: #631822;
     
     /* Risk colors (Preserved for clinical indicator clarity) */
     --low-color: #10b981; /* Green */
@@ -36,13 +36,13 @@
     --mod-bg: #fff7ed;
     --mod-border: #ffedd5;
     
-    --high-color: #ef4444; /* Red */
+    --high-color: #DC2626; /* Bright Red #DC2626 for High risk indicators */
     --high-bg: #fef2f2;
     --high-border: #fee2e2;
     
-    --info-color: #dc2626;
-    --info-bg: #fef2f2;
-    --info-border: #fca5a5;
+    --info-color: #7a1f2b;
+    --info-bg: #fdf2f4;
+    --info-border: #f3cbd1;
     
     --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --border-radius-lg: 12px;
@@ -158,7 +158,7 @@ body {
 }
 
 .menu-item:hover {
-    background-color: rgba(255, 255, 255, 0.15);
+    background-color: #9c3a46;
     color: #ffffff;
 }
 
@@ -167,7 +167,7 @@ body {
 }
 
 .menu-item.active {
-    background-color: rgba(255, 255, 255, 0.22);
+    background-color: #9c3a46;
     color: #ffffff;
     font-weight: 700;
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2);
@@ -183,7 +183,7 @@ body {
 
 /* Callout Box in Sidebar */
 .prototype-callout {
-    background-color: rgba(0, 0, 0, 0.12);
+    background-color: #631822;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: var(--border-radius-lg);
     padding: 1rem;
@@ -261,7 +261,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition-smooth);
-    box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+    box-shadow: 0 2px 4px rgba(122, 31, 43, 0.2);
 }
 
 .btn-new-screening-top:hover {
@@ -311,7 +311,7 @@ body {
 #patient-search:focus {
     outline: none;
     border-color: var(--medical-red);
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+    box-shadow: 0 0 0 3px rgba(122, 31, 43, 0.12);
 }
 
 .btn-search {
@@ -668,7 +668,7 @@ body {
 
 .factor-card-box:hover {
     border-color: var(--medical-red-border);
-    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.05);
+    box-shadow: 0 2px 8px rgba(122, 31, 43, 0.05);
 }
 
 .factor-arrow-indicator {
@@ -792,7 +792,7 @@ body {
     color: var(--high-color);
 }
 .alert-high .priority-alert-icon {
-    background-color: rgba(239, 68, 68, 0.1);
+    background-color: rgba(220, 38, 38, 0.1);
 }
 
 /* Disclaimer alert card */
@@ -831,7 +831,7 @@ body {
 .spinner {
     width: 44px;
     height: 44px;
-    border: 4px solid rgba(220, 38, 38, 0.15);
+    border: 4px solid rgba(122, 31, 43, 0.15);
     border-top: 4px solid var(--medical-red);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -935,7 +935,7 @@ body {
     outline: none;
     background-color: #ffffff;
     border-color: var(--medical-red);
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+    box-shadow: 0 0 0 3px rgba(122, 31, 43, 0.12);
 }
 
 .form-submit-container {
@@ -958,7 +958,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition-smooth);
-    box-shadow: 0 2px 4px rgba(220, 38, 38, 0.2);
+    box-shadow: 0 2px 4px rgba(122, 31, 43, 0.2);
 }
 
 .btn-submit:hover {
@@ -1002,7 +1002,7 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 100vh;
-    background: linear-gradient(135deg, #b91c1c 0%, #dc2626 50%, #991b1b 100%);
+    background: linear-gradient(135deg, #631822 0%, #7a1f2b 50%, #4c1018 100%);
     color: #ffffff;
     padding: 2rem;
     position: fixed;
@@ -1180,7 +1180,7 @@ body {
 }
 
 .btn-reject:hover {
-    background-color: #dc2626;
+    background-color: #DC2626;
 }
 
 /* Success notification message layout */
@@ -1193,4 +1193,161 @@ body {
     font-size: 0.9rem;
     font-weight: 500;
     margin-bottom: 1.5rem;
+}
+
+/* Dashboard stats metrics cards */
+.dashboard-stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.stat-card-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-card-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+/* Sorting controls style */
+.sorting-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+}
+
+.sorting-indicator {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--medical-red);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.sort-select {
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-md);
+    background-color: #ffffff;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    outline: none;
+    transition: var(--transition-smooth);
+}
+
+.sort-select:focus {
+    border-color: var(--medical-red);
+}
+
+/* Follow-up status segment */
+.follow-up-status-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--card-border);
+}
+
+.follow-up-status-label {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.follow-up-status-buttons {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}
+
+.btn-status-toggle {
+    flex: 1;
+    padding: 0.55rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: 1px solid var(--card-border);
+    border-radius: var(--border-radius-md);
+    background-color: #f8fafc;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    text-align: center;
+}
+
+.btn-status-toggle:hover {
+    background-color: #e2e8f0;
+    color: var(--text-primary);
+}
+
+.btn-status-toggle.active[data-status="Pending"] {
+    background-color: #e2e8f0;
+    color: var(--text-primary);
+    border-color: #cbd5e1;
+}
+
+.btn-status-toggle.active[data-status="Scheduled"] {
+    background-color: #dbeafe;
+    color: #1e40af;
+    border-color: #bfdbfe;
+}
+
+.btn-status-toggle.active[data-status="Completed"] {
+    background-color: #d1fae5;
+    color: #065f46;
+    border-color: #a7f3d0;
+}
+
+/* Status badges for patient list */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-left: 0.5rem;
+}
+
+.badge-pending {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+.badge-scheduled {
+    background-color: #eff6ff;
+    color: #3b82f6;
+}
+
+.badge-completed {
+    background-color: #ecfdf5;
+    color: #10b981;
 }

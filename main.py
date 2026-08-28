@@ -48,6 +48,8 @@ from Src.database import (
     save_new_user,
     get_pending_requests,
     update_user_status,
+    update_follow_up_status,
+    get_dashboard_stats,
 )
 from Src.explain import explain_patient
 
@@ -123,6 +125,22 @@ def startup_event() -> None:
     _pipeline = joblib.load(MODEL_PATH)
     print(f"[startup] DB ready: {DB_PATH}")
     print(f"[startup] Model loaded: {type(_pipeline.named_steps['model']).__name__}")
+    
+    # Pre-compute risk predictions for all existing patients if not already cached
+    try:
+        patients_list = get_all_patients(DB_PATH)
+        for p in patients_list:
+            patient_id = p["patient_id"]
+            if get_cached_prediction(DB_PATH, patient_id) is None:
+                print(f"Pre-calculating risk for patient {patient_id}...")
+                patient_row = get_patient(DB_PATH, patient_id)
+                if patient_row is not None:
+                    result = explain_patient(patient_row, pipeline=_pipeline)
+                    result["patient_id"] = patient_id
+                    cache_prediction(DB_PATH, patient_id, result)
+        print("[startup] Seeded patient predictions pre-calculated.")
+    except Exception as e:
+        print(f"[Warning] Failed to pre-calculate predictions on startup: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +251,7 @@ class PredictResponse(BaseModel):
     risk_category: str
     top_factors: list[FactorItem]
     follow_up_priority: str
+    follow_up_status: str = "Pending"
 
 
 class PatientListItem(BaseModel):
@@ -240,6 +259,7 @@ class PatientListItem(BaseModel):
     summary: str
     name: str | None = None
     risk_percent: float | None = None
+    follow_up_status: str | None = "Pending"
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +510,53 @@ def patients(current_user: dict = Depends(get_current_user)) -> list[PatientList
     """
     rows = get_all_patients(DB_PATH)
     return [PatientListItem(**r) for r in rows]
+
+
+class UpdateFollowUpRequest(BaseModel):
+    status: str
+
+
+@app.patch("/predict/{patient_id}/follow-up", summary="Update follow-up status")
+def patch_follow_up(
+    patient_id: str,
+    request: UpdateFollowUpRequest,
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    status = request.status.strip()
+    if status not in ["Pending", "Scheduled", "Completed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid status. Status must be one of 'Pending', 'Scheduled', or 'Completed'."
+        )
+    
+    # Verify patient exists
+    cached = get_cached_prediction(DB_PATH, patient_id)
+    if cached is None:
+        patient_row = get_patient(DB_PATH, patient_id)
+        if patient_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Patient '{patient_id}' not found in the database."
+            )
+        result = explain_patient(patient_row, pipeline=_pipeline)
+        result["patient_id"] = patient_id
+        cache_prediction(DB_PATH, patient_id, result)
+    
+    try:
+        update_follow_up_status(DB_PATH, patient_id, status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        
+    return {"message": "Follow-up status updated successfully.", "patient_id": patient_id, "follow_up_status": status}
+
+
+@app.get("/dashboard/stats", summary="Get dashboard statistics")
+def dashboard_stats(current_user: dict = Depends(get_current_user)) -> dict:
+    try:
+        stats = get_dashboard_stats(DB_PATH)
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error fetching stats: {str(e)}")
 
 
 @app.get("/health", summary="Health check")

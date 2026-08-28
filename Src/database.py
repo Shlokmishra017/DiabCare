@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS predictions (
     risk_category       TEXT,
     factors             TEXT,
     follow_up_priority  TEXT,
-    created_at          TEXT
+    created_at          TEXT,
+    follow_up_status    TEXT CHECK(follow_up_status IN ('Pending','Scheduled','Completed')) DEFAULT 'Pending'
 );
 """
 
@@ -110,6 +111,21 @@ def init_db(db_path: str) -> None:
         conn.execute(CREATE_PREDICTIONS_SQL)
         conn.execute(CREATE_USERS_SQL)
         conn.commit()
+
+        # Check if predictions table needs follow_up_status column migration
+        try:
+            pred_info = cursor.execute("PRAGMA table_info(predictions)").fetchall()
+            if pred_info:
+                has_follow_up = any(col[1] == "follow_up_status" for col in pred_info)
+                if not has_follow_up:
+                    conn.execute(
+                        "ALTER TABLE predictions ADD COLUMN follow_up_status TEXT CHECK(follow_up_status IN ('Pending','Scheduled','Completed')) DEFAULT 'Pending'"
+                    )
+                    conn.commit()
+                    print("[Migration] Added follow_up_status column to predictions table.")
+        except Exception as e:
+            print(f"[Warning] Predictions table follow_up_status migration failed: {str(e)}")
+
         _seed_users(conn)
 
 
@@ -312,12 +328,12 @@ def get_patient(db_path: str, patient_id: str) -> Optional[pd.DataFrame]:
 
 
 def get_all_patients(db_path: str) -> list[dict]:
-    """Return all patients as list of {patient_id, summary, name, risk_percent} for /patients endpoint."""
+    """Return all patients as list of {patient_id, summary, name, risk_percent, follow_up_status} for /patients endpoint."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT p.patient_id, p.summary, p.name, pr.risk_percent
+            SELECT p.patient_id, p.summary, p.name, pr.risk_percent, pr.follow_up_status
             FROM patients p
             LEFT JOIN predictions pr ON p.patient_id = pr.patient_id
             ORDER BY COALESCE(pr.risk_percent, -1) DESC, p.patient_id ASC
@@ -329,6 +345,7 @@ def get_all_patients(db_path: str) -> list[dict]:
             "summary": r["summary"],
             "name": r["name"],
             "risk_percent": r["risk_percent"],
+            "follow_up_status": r["follow_up_status"] if r["follow_up_status"] is not None else "Pending",
         }
         for r in rows
     ]
@@ -345,23 +362,47 @@ def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
     if row is None:
         return None
 
+    # Retrieve follow_up_status, defaulting to 'Pending' if NULL or missing in older schema
+    follow_up_status = "Pending"
+    try:
+        if "follow_up_status" in row.keys() and row["follow_up_status"] is not None:
+            follow_up_status = row["follow_up_status"]
+    except Exception:
+        pass
+
     return {
         "patient_id": row["patient_id"],
         "risk_percent": row["risk_percent"],
         "risk_category": row["risk_category"],
         "top_factors": json.loads(row["factors"]),
         "follow_up_priority": row["follow_up_priority"],
+        "follow_up_status": follow_up_status,
     }
 
 
 def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
     """Persist a prediction result so repeated calls skip SHAP re-computation."""
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Check if we already have a status in DB to preserve it
+    existing_status = "Pending"
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT follow_up_status FROM predictions WHERE patient_id = ?", (patient_id,)).fetchone()
+        if row is not None:
+            try:
+                if "follow_up_status" in row.keys() and row["follow_up_status"] is not None:
+                    existing_status = row["follow_up_status"]
+            except Exception:
+                pass
+
+    follow_up_status = result.get("follow_up_status", existing_status)
+
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """INSERT OR REPLACE INTO predictions
-               (patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at, follow_up_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 patient_id,
                 result["risk_percent"],
@@ -369,6 +410,61 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
                 json.dumps(result["top_factors"]),
                 result["follow_up_priority"],
                 now,
+                follow_up_status,
             ),
         )
         conn.commit()
+
+
+def update_follow_up_status(db_path: str, patient_id: str, status: str) -> None:
+    """Update the follow-up status for a patient's prediction record."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE predictions SET follow_up_status = ? WHERE patient_id = ?",
+            (status, patient_id)
+        )
+        conn.commit()
+
+
+def get_dashboard_stats(db_path: str) -> dict:
+    """Return dict of counts for doctor and admin dashboard metrics."""
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        
+        # Approved doctors
+        approved_docs = cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'approved'"
+        ).fetchone()[0]
+        
+        # Pending doctor requests
+        pending_docs = cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'pending'"
+        ).fetchone()[0]
+        
+        # Total patients in the registry
+        total_patients = cursor.execute(
+            "SELECT COUNT(*) FROM patients"
+        ).fetchone()[0]
+        
+        # Risk counts (high, moderate) from predictions cache
+        high_risk = cursor.execute(
+            "SELECT COUNT(*) FROM predictions WHERE risk_category = 'High'"
+        ).fetchone()[0]
+        
+        mod_risk = cursor.execute(
+            "SELECT COUNT(*) FROM predictions WHERE risk_category = 'Moderate'"
+        ).fetchone()[0]
+        
+        # Pending follow-ups
+        pending_followups = cursor.execute(
+            "SELECT COUNT(*) FROM predictions WHERE follow_up_status = 'Pending'"
+        ).fetchone()[0]
+        
+    return {
+        "approved_doctors": approved_docs,
+        "pending_doctors": pending_docs,
+        "total_patients": total_patients,
+        "high_risk_patients": high_risk,
+        "moderate_risk_patients": mod_risk,
+        "pending_followups": pending_followups,
+    }

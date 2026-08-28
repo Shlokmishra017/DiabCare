@@ -250,6 +250,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return labelText;
     }
 
+    let sortState = "risk"; // Default sorting by risk descending
+
     // 1. Fetch available patients on load
     async function fetchPatients() {
         try {
@@ -274,68 +276,106 @@ document.addEventListener("DOMContentLoaded", () => {
             allPatientsCached = patients;
 
             patientListLoading.classList.add("hidden");
-            patientTableBody.innerHTML = "";
-
-            patients.forEach(patient => {
-                let uiId = `P-${patient.patient_id}`;
-                let ageGroup = "70-80";
-                let gender = "Female";
-                let lastEncounter = "Just Screened";
-
-                // Check mapping for default seeded demo patients
-                if (PATIENT_MAPPING[patient.patient_id]) {
-                    const mapped = PATIENT_MAPPING[patient.patient_id];
-                    uiId = mapped.uiId;
-                    ageGroup = mapped.ageGroup;
-                    gender = mapped.gender;
-                    lastEncounter = mapped.lastEncounter;
-                } else {
-                    // It's a new screening profile, parse summary details
-                    const parsed = parsePatientSummary(patient.summary);
-                    if (parsed.gender) gender = parsed.gender;
-                    if (parsed.age) ageGroup = parsed.age;
-                    // Keep visual ID cleaner for new patients
-                    uiId = `P-${patient.patient_id}`;
-                }
-
-                const row = document.createElement("tr");
-                row.dataset.id = patient.patient_id;
-                row.dataset.uiId = uiId;
-                row.dataset.ageGroup = ageGroup;
-                row.dataset.gender = gender;
-                row.dataset.lastEncounter = lastEncounter;
-                
-                row.innerHTML = `
-                    <td class="patient-table-id">${uiId}</td>
-                    <td>${ageGroup}</td>
-                    <td>${gender}</td>
-                    <td>${lastEncounter}</td>
-                    <td>
-                        <button class="btn-assess">Assess Risk &rarr;</button>
-                    </td>
-                `;
-
-                // Add click triggers
-                const triggerAssess = () => {
-                    openPatientScreening(patient.patient_id, uiId, ageGroup, gender, lastEncounter);
-                };
-                
-                row.addEventListener("click", (e) => {
-                    if (e.target.tagName !== "BUTTON") triggerAssess();
-                });
-                row.querySelector(".btn-assess").addEventListener("click", (e) => {
-                    e.stopPropagation();
-                    triggerAssess();
-                });
-
-                patientTableBody.appendChild(row);
-            });
-
-            updateShowingCount();
+            renderPatientTable();
+            fetchDashboardStats(); // update dashboard summary statistics
         } catch (error) {
             console.error("Error loading patient table listing:", error);
             patientListLoading.innerHTML = `<span style="color: var(--high-color);">Failed to load clinical profiles. Is server running?</span>`;
         }
+    }
+
+    // Render Patient queue sorting logic and status badge integration
+    function renderPatientTable() {
+        if (!allPatientsCached) return;
+
+        const patientsCopy = [...allPatientsCached];
+        
+        if (sortState === "risk") {
+            patientsCopy.sort((a, b) => {
+                const riskA = a.risk_percent !== null && a.risk_percent !== undefined ? a.risk_percent : -1;
+                const riskB = b.risk_percent !== null && b.risk_percent !== undefined ? b.risk_percent : -1;
+                return riskB - riskA;
+            });
+            document.getElementById("sorting-indicator").innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                Sorted by Risk
+            `;
+        } else {
+            patientsCopy.sort((a, b) => {
+                return a.patient_id.localeCompare(b.patient_id, undefined, {numeric: true, sensitivity: 'base'});
+            });
+            document.getElementById("sorting-indicator").innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                Sorted by ID
+            `;
+        }
+
+        patientTableBody.innerHTML = "";
+
+        patientsCopy.forEach(patient => {
+            let uiId = `P-${patient.patient_id}`;
+            let ageGroup = "70-80";
+            let gender = "Female";
+            let lastEncounter = "Just Screened";
+
+            // Check mapping for default seeded demo patients
+            if (PATIENT_MAPPING[patient.patient_id]) {
+                const mapped = PATIENT_MAPPING[patient.patient_id];
+                uiId = mapped.uiId;
+                ageGroup = mapped.ageGroup;
+                gender = mapped.gender;
+                lastEncounter = mapped.lastEncounter;
+            } else {
+                // It's a new screening profile, parse summary details
+                const parsed = parsePatientSummary(patient.summary);
+                if (parsed.gender) gender = parsed.gender;
+                if (parsed.age) ageGroup = parsed.age;
+                uiId = `P-${patient.patient_id}`;
+            }
+
+            // Follow-up status badge next to Patient ID
+            const followUpStatus = patient.follow_up_status || "Pending";
+            let badgeClass = "badge-pending";
+            if (followUpStatus === "Scheduled") badgeClass = "badge-scheduled";
+            if (followUpStatus === "Completed") badgeClass = "badge-completed";
+
+            const row = document.createElement("tr");
+            row.dataset.id = patient.patient_id;
+            row.dataset.uiId = uiId;
+            row.dataset.ageGroup = ageGroup;
+            row.dataset.gender = gender;
+            row.dataset.lastEncounter = lastEncounter;
+            
+            row.innerHTML = `
+                <td class="patient-table-id">
+                    ${uiId}
+                    <span class="status-badge ${badgeClass}">${followUpStatus}</span>
+                </td>
+                <td>${ageGroup}</td>
+                <td>${gender}</td>
+                <td>${lastEncounter}</td>
+                <td>
+                    <button class="btn-assess">Assess Risk &rarr;</button>
+                </td>
+            `;
+
+            // Add click triggers
+            const triggerAssess = () => {
+                openPatientScreening(patient.patient_id, uiId, ageGroup, gender, lastEncounter);
+            };
+            
+            row.addEventListener("click", (e) => {
+                if (e.target.tagName !== "BUTTON") triggerAssess();
+            });
+            row.querySelector(".btn-assess").addEventListener("click", (e) => {
+                e.stopPropagation();
+                triggerAssess();
+            });
+
+            patientTableBody.appendChild(row);
+        });
+
+        updateShowingCount();
     }
 
     // Helper: update shown patients label count
@@ -546,6 +586,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             detailFactorsList.appendChild(factorRow);
         });
+
+        // Render follow-up status button group selection state
+        renderFollowUpStatus(data.follow_up_status || "Pending", data.patient_id);
     }
 
     // SVG Circular Ring Offset Calculation & Counter Animation
@@ -1103,6 +1146,127 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             alert(`Error processing request: ${error.message}`);
         }
+    }
+
+    // Fetch and render dashboard stats metrics cards (Doctor/Admin)
+    async function fetchDashboardStats() {
+        try {
+            const token = sessionStorage.getItem("token");
+            const user = JSON.parse(sessionStorage.getItem("user") || "null");
+            if (!token || !user) return;
+            
+            const response = await fetch("/dashboard/stats", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (!response.ok) {
+                throw new Error("Failed to fetch dashboard stats.");
+            }
+            const stats = await response.json();
+            const container = document.getElementById("dashboard-stats-container");
+            if (!container) return;
+            
+            if (user.role === "doctor") {
+                container.innerHTML = `
+                    <div class="stat-card">
+                        <span class="stat-card-title">All Patients</span>
+                        <span class="stat-card-value">${stats.total_patients}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">High-Risk</span>
+                        <span class="stat-card-value">${stats.high_risk_patients}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">Moderate-Risk</span>
+                        <span class="stat-card-value">${stats.moderate_risk_patients}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">Pending Follow-Ups</span>
+                        <span class="stat-card-value">${stats.pending_followups}</span>
+                    </div>
+                `;
+            } else if (user.role === "admin") {
+                container.innerHTML = `
+                    <div class="stat-card">
+                        <span class="stat-card-title">Total Approved Doctors</span>
+                        <span class="stat-card-value">${stats.approved_doctors}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">Pending Approvals</span>
+                        <span class="stat-card-value" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            <span>${stats.pending_doctors}</span>
+                            ${stats.pending_doctors > 0 ? `<button class="btn-assess" id="btn-go-to-requests" style="padding:0.3rem 0.75rem; font-size:0.75rem; border-radius:4px;">Review &rarr;</button>` : ''}
+                        </span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">Total Screened Patients</span>
+                        <span class="stat-card-value">${stats.total_patients}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-card-title">System-wide High-Risk</span>
+                        <span class="stat-card-value">${stats.high_risk_patients}</span>
+                    </div>
+                `;
+                // Bind click event for "Review" button in admin dashboard
+                const btnGoRequests = document.getElementById("btn-go-to-requests");
+                if (btnGoRequests) {
+                    btnGoRequests.addEventListener("click", (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showRequestsView();
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("Error rendering dashboard stats:", error);
+        }
+    }
+
+    // Render follow up status buttons and bind PATCH action calls
+    function renderFollowUpStatus(currentStatus, patientId) {
+        const buttons = document.querySelectorAll("#follow-up-status-buttons .btn-status-toggle");
+        buttons.forEach(btn => {
+            const status = btn.getAttribute("data-status");
+            if (status === currentStatus) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+            
+            // Re-bind click event cleanly
+            btn.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    const token = sessionStorage.getItem("token");
+                    const response = await fetch(`/predict/${patientId}/follow-up`, {
+                        method: "PATCH",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer " + token
+                        },
+                        body: JSON.stringify({ status: status })
+                    });
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || "Failed to update status");
+                    }
+                    renderFollowUpStatus(status, patientId);
+                    fetchDashboardStats();
+                    fetchPatients(); // refresh main patient list to show updated status tags
+                } catch (err) {
+                    alert(`Failed to update follow-up status: ${err.message}`);
+                }
+            };
+        });
+    }
+
+    // Bind Sorting Selection event trigger
+    const sortSelect = document.getElementById("sort-select");
+    if (sortSelect) {
+        sortSelect.addEventListener("change", (e) => {
+            sortState = e.target.value;
+            renderPatientTable();
+        });
     }
 
     // Run Initial Data/Authentication Check
