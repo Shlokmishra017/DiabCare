@@ -24,9 +24,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import joblib
 # pyrefly: ignore [missing-import]
 from datetime import datetime, timedelta, timezone
+# pyrefly: ignore [missing-import]
 import jwt
+# pyrefly: ignore [missing-import]
 import bcrypt
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, HTTPException, Depends
+# pyrefly: ignore [missing-import]
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,11 +49,16 @@ from Src.database import (
     init_db,
     save_new_patient,
     get_user_by_email,
+    get_user_by_id,
+    update_user_profile,
     save_new_user,
     get_pending_requests,
+    get_all_doctors,
+    get_all_admins,
     update_user_status,
     update_follow_up_status,
     get_dashboard_stats,
+    assign_patient_to_doctor,
 )
 from Src.explain import explain_patient
 
@@ -176,12 +185,59 @@ class LoginUserResponse(BaseModel):
     name: str
     email: str
     role: str
+    education: str | None = None
+    reference_id: str | None = None
 
 
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
     user: LoginUserResponse
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str
+    education: str
+    reference_id: str
+
+
+class UserProfileResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: str
+    status: str
+    education: str | None = None
+    reference_id: str | None = None
+    created_at: str
+
+
+class CreateAdminRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class DoctorRecordItem(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: str
+    status: str
+    education: str | None = None
+    reference_id: str | None = None
+    created_at: str
+
+
+class AdminRecordItem(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: str
+    status: str
+    education: str | None = None
+    reference_id: str | None = None
+    created_at: str
 
 
 class PredictRequest(BaseModel):
@@ -252,14 +308,22 @@ class PredictResponse(BaseModel):
     top_factors: list[FactorItem]
     follow_up_priority: str
     follow_up_status: str = "Pending"
+    scheduled_date: str | None = None
 
 
 class PatientListItem(BaseModel):
     patient_id: str
     summary: str
     name: str | None = None
+    assigned_doctor_id: str | None = None
+    assigned_doctor_name: str | None = None
     risk_percent: float | None = None
     follow_up_status: str | None = "Pending"
+    scheduled_date: str | None = None
+
+
+class AssignPatientRequest(BaseModel):
+    doctor_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +366,9 @@ def login(request: LoginRequest) -> LoginResponse:
             user_id=user["user_id"],
             name=user["name"],
             email=user["email"],
-            role=user["role"]
+            role=user["role"],
+            education=user.get("education"),
+            reference_id=user.get("reference_id")
         )
     )
 
@@ -370,6 +436,101 @@ def action_pending_request(request: RequestActionRequest, current_user: dict = D
         raise HTTPException(status_code=500, detail=f"Database error updating status: {str(e)}")
 
     return {"message": f"User {user_id} has been {status}."}
+
+
+@app.get("/user/profile", response_model=UserProfileResponse, summary="Get current user profile")
+def get_profile(current_user: dict = Depends(get_current_user)) -> UserProfileResponse:
+    user = get_user_by_id(DB_PATH, current_user["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User profile not found.")
+    return UserProfileResponse(
+        user_id=user["user_id"],
+        name=user["name"],
+        email=user["email"],
+        role=user["role"],
+        status=user["status"],
+        education=user.get("education"),
+        reference_id=user.get("reference_id"),
+        created_at=user["created_at"]
+    )
+
+
+@app.put("/user/profile", response_model=UserProfileResponse, summary="Update current user profile")
+def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(get_current_user)) -> UserProfileResponse:
+    user = get_user_by_id(DB_PATH, current_user["user_id"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    
+    name = request.name.strip()
+    education = request.education.strip()
+    reference_id = request.reference_id.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty.")
+
+    try:
+        update_user_profile(DB_PATH, current_user["user_id"], name, education, reference_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error updating profile: {str(e)}")
+
+    updated_user = get_user_by_id(DB_PATH, current_user["user_id"])
+    return UserProfileResponse(
+        user_id=updated_user["user_id"],
+        name=updated_user["name"],
+        email=updated_user["email"],
+        role=updated_user["role"],
+        status=updated_user["status"],
+        education=updated_user.get("education"),
+        reference_id=updated_user.get("reference_id"),
+        created_at=updated_user["created_at"]
+    )
+
+
+@app.get("/admin/doctors", response_model=list[DoctorRecordItem], summary="Get all registered doctor records (Admin only)")
+def list_all_doctors(current_user: dict = Depends(get_current_user)) -> list[DoctorRecordItem]:
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden. Only administrators can view doctor records.")
+    doctors = get_all_doctors(DB_PATH)
+    return [DoctorRecordItem(**d) for d in doctors]
+
+
+@app.get("/admin/admins", response_model=list[AdminRecordItem], summary="Get all system administrators (Admin only)")
+def list_all_admins(current_user: dict = Depends(get_current_user)) -> list[AdminRecordItem]:
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden. Only administrators can view admin records.")
+    admins = get_all_admins(DB_PATH)
+    return [AdminRecordItem(**a) for a in admins]
+
+
+@app.post("/admin/create-admin", summary="Directly create a new administrator account (Admin only)")
+def create_admin(request: CreateAdminRequest, current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Forbidden. Only administrators can create admin accounts.")
+
+    name = request.name.strip()
+    email = request.email.strip().lower()
+    password = request.password
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required.")
+    if not name:
+        name = "Admin User"
+
+    existing_user = get_user_by_email(DB_PATH, email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email is already registered.")
+
+    user_id = f"ADM-{uuid.uuid4().hex[:6].upper()}"
+    pwd_bytes = password.encode('utf-8')
+    salt = bcrypt.gensalt()
+    pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+
+    try:
+        save_new_user(DB_PATH, user_id, name, email, pwd_hash, "admin", "approved", "System Administrator", f"REF-ADM-{user_id[-4:]}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error creating admin: {str(e)}")
+
+    return {"message": f"Administrator account created successfully for {email}.", "user_id": user_id}
 
 
 @app.post("/predict", response_model=PredictResponse, summary="Predict 30-day readmission risk")
@@ -514,6 +675,7 @@ def patients(current_user: dict = Depends(get_current_user)) -> list[PatientList
 
 class UpdateFollowUpRequest(BaseModel):
     status: str
+    scheduled_date: str | None = None
 
 
 @app.patch("/predict/{patient_id}/follow-up", summary="Update follow-up status")
@@ -529,6 +691,8 @@ def patch_follow_up(
             detail="Invalid status. Status must be one of 'Pending', 'Scheduled', or 'Completed'."
         )
     
+    scheduled_date = request.scheduled_date.strip() if request.scheduled_date and request.scheduled_date.strip() else None
+    
     # Verify patient exists
     cached = get_cached_prediction(DB_PATH, patient_id)
     if cached is None:
@@ -543,11 +707,51 @@ def patch_follow_up(
         cache_prediction(DB_PATH, patient_id, result)
     
     try:
-        update_follow_up_status(DB_PATH, patient_id, status)
+        update_follow_up_status(DB_PATH, patient_id, status, scheduled_date)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
-    return {"message": "Follow-up status updated successfully.", "patient_id": patient_id, "follow_up_status": status}
+    return {
+        "message": "Follow-up status updated successfully.",
+        "patient_id": patient_id,
+        "follow_up_status": status,
+        "scheduled_date": scheduled_date
+    }
+
+
+@app.patch("/patients/{patient_id}/assign", summary="Assign or unassign patient to a doctor (Admin only)")
+def patch_assign_patient(
+    patient_id: str,
+    request: AssignPatientRequest,
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    if current_user["role"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Only administrators can assign patients to doctors."
+        )
+    
+    doctor_id = request.doctor_id.strip() if request.doctor_id and request.doctor_id.strip() else None
+    
+    # If doctor_id is specified, verify doctor exists and is approved
+    if doctor_id:
+        doc_user = get_user_by_id(DB_PATH, doctor_id)
+        if not doc_user or doc_user["role"] != "doctor" or doc_user["status"] != "approved":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid doctor ID '{doctor_id}'. Must be an approved doctor."
+            )
+            
+    try:
+        assign_patient_to_doctor(DB_PATH, patient_id, doctor_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error updating patient assignment: {str(e)}")
+
+    return {
+        "message": f"Patient '{patient_id}' assigned successfully.",
+        "patient_id": patient_id,
+        "assigned_doctor_id": doctor_id
+    }
 
 
 @app.get("/dashboard/stats", summary="Get dashboard statistics")

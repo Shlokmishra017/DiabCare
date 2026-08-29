@@ -108,13 +108,25 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <span>Patient Search</span>
                 </a>
-                <a href="#" class="menu-item" id="menu-patients">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                    <span>About System</span>
+                <a href="#" class="menu-item" id="menu-profile">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span>My Profile</span>
+                </a>
+                <a href="#" class="menu-item hidden" id="menu-doctors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Doctors Directory</span>
                 </a>
                 <a href="#" class="menu-item hidden" id="menu-requests">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
                     <span>Access Requests</span>
+                </a>
+                <a href="#" class="menu-item hidden" id="menu-admins">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <span>Manage Admins</span>
+                </a>
+                <a href="#" class="menu-item" id="menu-patients">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span>About System</span>
                 </a>
             </nav>
             
@@ -132,7 +144,150 @@
 
         <!-- Main Content Area -->
         <main class="main-content">
-            
+
+            <!-- VIEW: USER PROFILE SCREEN -->
+            <div id="profile-view" class="content-view hidden">
+                <header class="content-header">
+                    <div class="content-header-title">
+                        <h2>User Profile Details</h2>
+                        <p class="subtitle" style="margin-top: 0.25rem;">View and update your professional profile information</p>
+                    </div>
+                </header>
+                
+                <div class="card form-card" style="max-width: 650px; margin: 0 auto;">
+                    <div id="profile-error-banner" class="form-error-message"></div>
+                    <div id="profile-success-banner" class="form-success-message" style="color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 0.75rem 1rem; border-radius: var(--border-radius-md); font-size: 0.9rem; font-weight: 500; margin-bottom: 1.5rem; display: none;"></div>
+                    
+                    <form id="profile-form">
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label for="profile-name">Full Name</label>
+                            <input type="text" id="profile-name" class="form-control" placeholder="e.g. Dr. Alice Smith" required>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label for="profile-email">Email Address (Read-only)</label>
+                            <input type="email" id="profile-email" class="form-control" disabled style="background-color: #f1f5f9; cursor: not-allowed;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label for="profile-role">Account Role (Read-only)</label>
+                            <input type="text" id="profile-role" class="form-control" disabled style="background-color: #f1f5f9; cursor: not-allowed; text-transform: capitalize;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1.25rem;">
+                            <label for="profile-education">Education / Medical Qualifications</label>
+                            <input type="text" id="profile-education" class="form-control" placeholder="e.g. MD - Endocrinology (Harvard Medical School)" required>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 1.75rem;">
+                            <label for="profile-reference-id">Reference / Medical Registration ID</label>
+                            <input type="text" id="profile-reference-id" class="form-control" placeholder="e.g. REF-DOC-98421" required>
+                        </div>
+
+                        <div class="form-submit-container" style="justify-content: flex-end;">
+                            <button type="submit" class="btn-submit">Save Profile Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- VIEW: ADMIN DOCTORS DIRECTORY SCREEN -->
+            <div id="doctors-view" class="content-view hidden">
+                <header class="content-header">
+                    <div class="content-header-title">
+                        <h2>Doctors Directory & Database Records</h2>
+                        <p class="subtitle" style="margin-top: 0.25rem;">System-wide view of all registered doctors, qualifications, and account status</p>
+                    </div>
+                </header>
+                
+                <div class="dashboard-stats-container" id="doctors-stats-container">
+                    <!-- Populated via JS -->
+                </div>
+
+                <section class="card-patient-selection">
+                    <div class="search-section">
+                        <div class="search-input-wrapper">
+                            <input type="text" id="doctor-search" placeholder="Search doctor by name, email, qualification, or ref ID...">
+                        </div>
+                    </div>
+                    
+                    <div id="doctors-table-container" class="patient-table-container">
+                        <table class="patient-table">
+                            <thead>
+                                <tr>
+                                    <th>Doctor Name</th>
+                                    <th>Email Address</th>
+                                    <th>Education / Qualifications</th>
+                                    <th>Reference ID</th>
+                                    <th>Status</th>
+                                    <th>Joined Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="doctors-table-body">
+                                <!-- Populated dynamically via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+
+            <!-- VIEW: MANAGE ADMINS SCREEN -->
+            <div id="admins-view" class="content-view hidden">
+                <header class="content-header">
+                    <div class="content-header-title">
+                        <h2>Administrator Management</h2>
+                        <p class="subtitle" style="margin-top: 0.25rem;">View active system administrators and add new admin accounts</p>
+                    </div>
+                </header>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 1.5rem; align-items: start;">
+                    <div class="card form-card">
+                        <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--medical-red);">Add New Administrator</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">Enter credentials to grant immediate administrator privileges.</p>
+                        
+                        <div id="create-admin-error-banner" class="form-error-message"></div>
+                        <div id="create-admin-success-banner" class="form-success-message" style="color: #047857; background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 0.75rem 1rem; border-radius: var(--border-radius-md); font-size: 0.9rem; font-weight: 500; margin-bottom: 1.5rem; display: none;"></div>
+
+                        <form id="create-admin-form">
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="new-admin-name">Full Name</label>
+                                <input type="text" id="new-admin-name" class="form-control" placeholder="e.g. Dr. System Admin" required>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="new-admin-email">Admin Email Address</label>
+                                <input type="email" id="new-admin-email" class="form-control" placeholder="e.g. admin2@diabcare.ai" required>
+                            </div>
+                            <div class="form-group" style="margin-bottom: 1.5rem;">
+                                <label for="new-admin-password">Password</label>
+                                <input type="password" id="new-admin-password" class="form-control" placeholder="••••••••" required>
+                            </div>
+                            <button type="submit" class="btn-submit" style="width: 100%; border: none;">Create Administrator</button>
+                        </form>
+                    </div>
+
+                    <section class="card-patient-selection" style="margin: 0;">
+                        <div class="showing-count-bar" id="admins-count-label" style="font-weight: 600; color: var(--text-primary);">
+                            Active System Administrators
+                        </div>
+                        <div class="patient-table-container">
+                            <table class="patient-table">
+                                <thead>
+                                    <tr>
+                                        <th>Admin Name</th>
+                                        <th>Email Address</th>
+                                        <th>Admin ID</th>
+                                        <th>Created Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admins-table-body">
+                                    <!-- Populated dynamically via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
             <!-- VIEW 4: ADMIN ACCESS REQUESTS SCREEN -->
             <div id="requests-view" class="content-view hidden">
                 <header class="content-header">
@@ -192,6 +347,18 @@
                         <button class="btn-search">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                         </button>
+                        
+                        <!-- Doctor "My Patients" Filter Tabs -->
+                        <div class="patient-filter-tabs" id="patient-filter-tabs">
+                            <button class="filter-tab active" id="tab-filter-all" data-filter="all">All Patients</button>
+                            <button class="filter-tab" id="tab-filter-my" data-filter="my">My Assigned Patients</button>
+                        </div>
+
+                        <!-- Admin Doctor Filter Dropdown -->
+                        <select id="admin-doctor-filter" class="sort-select hidden">
+                            <option value="all">Filter: All Doctors</option>
+                        </select>
+
                         <!-- Sorting controls -->
                         <div class="sorting-controls">
                             <span class="sorting-indicator" id="sorting-indicator">
@@ -220,6 +387,7 @@
                                     <th>Age Group</th>
                                     <th>Gender</th>
                                     <th>Last Encounter</th>
+                                    <th>Assigned Doctor</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -302,6 +470,15 @@
                                      <button class="btn-status-toggle" data-status="Pending">Pending</button>
                                      <button class="btn-status-toggle" data-status="Scheduled">Scheduled</button>
                                      <button class="btn-status-toggle" data-status="Completed">Completed</button>
+                                 </div>
+                                 <!-- Scheduled Date & Time Selector Container -->
+                                 <div id="schedule-date-container" class="hidden" style="margin-top: 1rem; padding: 1rem; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: var(--border-radius-md);">
+                                     <label for="scheduled-date-input" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 0.5rem;">Select Follow-Up Appointment Date & Time:</label>
+                                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                                         <input type="datetime-local" id="scheduled-date-input" class="form-control" style="max-width: 250px; font-size: 0.88rem; padding: 0.4rem 0.6rem;">
+                                         <button id="btn-save-schedule" class="btn-submit" style="padding: 0.45rem 0.85rem; font-size: 0.85rem;">Save Appointment</button>
+                                     </div>
+                                     <div id="scheduled-date-display" style="font-size: 0.85rem; font-weight: 600; color: #0369a1; margin-top: 0.6rem; display: none;"></div>
                                  </div>
                              </div>
                         </div>

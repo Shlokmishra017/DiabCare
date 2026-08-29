@@ -12,6 +12,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
+# pyrefly: ignore [missing-import]
 import bcrypt
 
 import pandas as pd
@@ -40,9 +41,10 @@ _FEATURE_COL_DEFS = ", ".join(
 
 CREATE_PATIENTS_SQL = f"""
 CREATE TABLE IF NOT EXISTS patients (
-    patient_id  TEXT PRIMARY KEY,
-    summary     TEXT,
-    name        TEXT,
+    patient_id          TEXT PRIMARY KEY,
+    summary             TEXT,
+    name                TEXT,
+    assigned_doctor_id  TEXT,
     {_FEATURE_COL_DEFS}
 );
 """
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS predictions (
     factors             TEXT,
     follow_up_priority  TEXT,
     created_at          TEXT,
-    follow_up_status    TEXT CHECK(follow_up_status IN ('Pending','Scheduled','Completed')) DEFAULT 'Pending'
+    follow_up_status    TEXT CHECK(follow_up_status IN ('Pending','Scheduled','Completed')) DEFAULT 'Pending',
+    scheduled_date      TEXT
 );
 """
 
@@ -67,6 +70,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT,
     role          TEXT CHECK(role IN ('doctor','admin')),
     status        TEXT CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'approved',
+    education     TEXT,
+    reference_id  TEXT,
     created_at    TEXT
 );
 """
@@ -78,25 +83,30 @@ def _seed_users(conn) -> None:
     if count == 0:
         now = datetime.now(timezone.utc).isoformat()
         users_data = [
-            ("U-1001", "Dr. Alice Smith", "doctor1@diabcare.ai", "doctor123", "doctor", "approved"),
-            ("U-1002", "Dr. Bob Jones", "doctor2@diabcare.ai", "doctor288", "doctor", "approved"),
-            ("U-1003", "Admin User", "admin@diabcare.ai", "admin999", "admin", "approved"),
+            ("U-1001", "Dr. Alice Smith", "doctor1@diabcare.ai", "doctor123", "doctor", "approved", "MD - Endocrinology (Harvard Medical School)", "REF-DOC-1001"),
+            ("U-1002", "Dr. Bob Jones", "doctor2@diabcare.ai", "doctor288", "doctor", "approved", "MBBS, MD - Diabetology (Johns Hopkins)", "REF-DOC-1002"),
+            ("U-1003", "Admin User", "admin@diabcare.ai", "admin999", "admin", "approved", "System Administrator", "REF-ADM-0001"),
         ]
-        for uid, name, email, pwd, role, status in users_data:
+        for uid, name, email, pwd, role, status, edu, ref in users_data:
             pwd_bytes = pwd.encode('utf-8')
             salt = bcrypt.gensalt()
             pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
             conn.execute(
-                "INSERT INTO users (user_id, name, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (uid, name, email, pwd_hash, role, status, now)
+                "INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (uid, name, email, pwd_hash, role, status, edu, ref, now)
             )
+        conn.commit()
+    else:
+        # Update existing seeded users if education or reference_id is NULL
+        conn.execute("UPDATE users SET education = 'MD - Endocrinology (Harvard Medical School)', reference_id = 'REF-DOC-1001' WHERE user_id = 'U-1001' AND (education IS NULL OR reference_id IS NULL)")
+        conn.execute("UPDATE users SET education = 'MBBS, MD - Diabetology (Johns Hopkins)', reference_id = 'REF-DOC-1002' WHERE user_id = 'U-1002' AND (education IS NULL OR reference_id IS NULL)")
+        conn.execute("UPDATE users SET education = 'System Administrator', reference_id = 'REF-ADM-0001' WHERE user_id = 'U-1003' AND (education IS NULL OR reference_id IS NULL)")
         conn.commit()
 
 
 def init_db(db_path: str) -> None:
     """Create tables if they don't exist."""
     with sqlite3.connect(db_path) as conn:
-        # Check if users table needs migration (status column exists)
         cursor = conn.cursor()
         try:
             table_info = cursor.execute("PRAGMA table_info(users)").fetchall()
@@ -104,6 +114,16 @@ def init_db(db_path: str) -> None:
                 has_status = any(col[1] == "status" for col in table_info)
                 if not has_status:
                     conn.execute("DROP TABLE users")
+                else:
+                    # Check for education and reference_id columns
+                    col_names = [col[1] for col in table_info]
+                    if "education" not in col_names:
+                        conn.execute("ALTER TABLE users ADD COLUMN education TEXT")
+                        print("[Migration] Added education column to users table.")
+                    if "reference_id" not in col_names:
+                        conn.execute("ALTER TABLE users ADD COLUMN reference_id TEXT")
+                        print("[Migration] Added reference_id column to users table.")
+                    conn.commit()
         except Exception as e:
             print(f"[Warning] Migration check failed: {str(e)}")
 
@@ -112,21 +132,45 @@ def init_db(db_path: str) -> None:
         conn.execute(CREATE_USERS_SQL)
         conn.commit()
 
-        # Check if predictions table needs follow_up_status column migration
+        # Check if patients table needs assigned_doctor_id column migration
+        try:
+            pat_info = cursor.execute("PRAGMA table_info(patients)").fetchall()
+            if pat_info:
+                has_assigned_doc = any(col[1] == "assigned_doctor_id" for col in pat_info)
+                if not has_assigned_doc:
+                    conn.execute("ALTER TABLE patients ADD COLUMN assigned_doctor_id TEXT")
+                    conn.commit()
+                    print("[Migration] Added assigned_doctor_id column to patients table.")
+        except Exception as e:
+            print(f"[Warning] Patients table assigned_doctor_id migration failed: {str(e)}")
+
+        # Check if predictions table needs follow_up_status or scheduled_date column migration
         try:
             pred_info = cursor.execute("PRAGMA table_info(predictions)").fetchall()
             if pred_info:
-                has_follow_up = any(col[1] == "follow_up_status" for col in pred_info)
-                if not has_follow_up:
+                pred_cols = [col[1] for col in pred_info]
+                if "follow_up_status" not in pred_cols:
                     conn.execute(
                         "ALTER TABLE predictions ADD COLUMN follow_up_status TEXT CHECK(follow_up_status IN ('Pending','Scheduled','Completed')) DEFAULT 'Pending'"
                     )
                     conn.commit()
                     print("[Migration] Added follow_up_status column to predictions table.")
+                if "scheduled_date" not in pred_cols:
+                    conn.execute("ALTER TABLE predictions ADD COLUMN scheduled_date TEXT")
+                    conn.commit()
+                    print("[Migration] Added scheduled_date column to predictions table.")
         except Exception as e:
-            print(f"[Warning] Predictions table follow_up_status migration failed: {str(e)}")
+            print(f"[Warning] Predictions table migration failed: {str(e)}")
 
         _seed_users(conn)
+
+        # Seed default patient assignments if assigned_doctor_id is unassigned
+        try:
+            conn.execute("UPDATE patients SET assigned_doctor_id = 'U-1001' WHERE patient_id = '2552952' AND assigned_doctor_id IS NULL")
+            conn.execute("UPDATE patients SET assigned_doctor_id = 'U-1002' WHERE patient_id = '149190' AND assigned_doctor_id IS NULL")
+            conn.commit()
+        except Exception:
+            pass
 
 
 def get_user_by_email(db_path: str, email: str) -> Optional[dict]:
@@ -138,24 +182,60 @@ def get_user_by_email(db_path: str, email: str) -> Optional[dict]:
         ).fetchone()
     if row is None:
         return None
+    row_dict = dict(row)
     return {
-        "user_id": row["user_id"],
-        "name": row["name"],
-        "email": row["email"],
-        "password_hash": row["password_hash"],
-        "role": row["role"],
-        "status": row["status"],
-        "created_at": row["created_at"]
+        "user_id": row_dict["user_id"],
+        "name": row_dict["name"],
+        "email": row_dict["email"],
+        "password_hash": row_dict["password_hash"],
+        "role": row_dict["role"],
+        "status": row_dict["status"],
+        "education": row_dict.get("education"),
+        "reference_id": row_dict.get("reference_id"),
+        "created_at": row_dict["created_at"]
     }
 
 
-def save_new_user(db_path: str, user_id: str, name: str, email: str, password_hash: str, role: str, status: str) -> None:
+def get_user_by_id(db_path: str, user_id: str) -> Optional[dict]:
+    """Return user data dict if user_id exists, else None."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    row_dict = dict(row)
+    return {
+        "user_id": row_dict["user_id"],
+        "name": row_dict["name"],
+        "email": row_dict["email"],
+        "password_hash": row_dict["password_hash"],
+        "role": row_dict["role"],
+        "status": row_dict["status"],
+        "education": row_dict.get("education"),
+        "reference_id": row_dict.get("reference_id"),
+        "created_at": row_dict["created_at"]
+    }
+
+
+def update_user_profile(db_path: str, user_id: str, name: str, education: str, reference_id: str) -> None:
+    """Update profile details (name, education, reference_id) for a user."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE users SET name = ?, education = ?, reference_id = ? WHERE user_id = ?",
+            (name, education, reference_id, user_id)
+        )
+        conn.commit()
+
+
+def save_new_user(db_path: str, user_id: str, name: str, email: str, password_hash: str, role: str, status: str, education: str = None, reference_id: str = None) -> None:
     """Register a new user in the database."""
     now = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "INSERT INTO users (user_id, name, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, name, email, password_hash, role, status, now)
+            "INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, name, email, password_hash, role, status, education, reference_id, now)
         )
         conn.commit()
 
@@ -165,7 +245,27 @@ def get_pending_requests(db_path: str) -> list[dict]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT user_id, name, email, role, created_at FROM users WHERE status = 'pending' ORDER BY created_at DESC"
+            "SELECT user_id, name, email, role, education, reference_id, created_at FROM users WHERE status = 'pending' ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_doctors(db_path: str) -> list[dict]:
+    """Get all doctor accounts with full profile data and approval status."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT user_id, name, email, role, status, education, reference_id, created_at FROM users WHERE role = 'doctor' ORDER BY created_at DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_admins(db_path: str) -> list[dict]:
+    """Get all admin accounts."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT user_id, name, email, role, status, education, reference_id, created_at FROM users WHERE role = 'admin' ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -327,15 +427,26 @@ def get_patient(db_path: str, patient_id: str) -> Optional[pd.DataFrame]:
     return df
 
 
+def assign_patient_to_doctor(db_path: str, patient_id: str, doctor_id: Optional[str]) -> None:
+    """Assign a patient to a doctor (or unassign if doctor_id is None)."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE patients SET assigned_doctor_id = ? WHERE patient_id = ?",
+            (doctor_id, patient_id)
+        )
+        conn.commit()
+
+
 def get_all_patients(db_path: str) -> list[dict]:
-    """Return all patients as list of {patient_id, summary, name, risk_percent, follow_up_status} for /patients endpoint."""
+    """Return all patients with assigned doctor information."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
-            SELECT p.patient_id, p.summary, p.name, pr.risk_percent, pr.follow_up_status
+            SELECT p.patient_id, p.summary, p.name, p.assigned_doctor_id, u.name AS assigned_doctor_name, pr.risk_percent, pr.follow_up_status, pr.scheduled_date
             FROM patients p
             LEFT JOIN predictions pr ON p.patient_id = pr.patient_id
+            LEFT JOIN users u ON p.assigned_doctor_id = u.user_id
             ORDER BY COALESCE(pr.risk_percent, -1) DESC, p.patient_id ASC
             """
         ).fetchall()
@@ -344,8 +455,11 @@ def get_all_patients(db_path: str) -> list[dict]:
             "patient_id": r["patient_id"],
             "summary": r["summary"],
             "name": r["name"],
+            "assigned_doctor_id": r["assigned_doctor_id"],
+            "assigned_doctor_name": r["assigned_doctor_name"],
             "risk_percent": r["risk_percent"],
             "follow_up_status": r["follow_up_status"] if r["follow_up_status"] is not None else "Pending",
+            "scheduled_date": r["scheduled_date"] if "scheduled_date" in r.keys() else None,
         }
         for r in rows
     ]
@@ -362,11 +476,14 @@ def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
     if row is None:
         return None
 
-    # Retrieve follow_up_status, defaulting to 'Pending' if NULL or missing in older schema
+    # Retrieve follow_up_status and scheduled_date
     follow_up_status = "Pending"
+    scheduled_date = None
     try:
         if "follow_up_status" in row.keys() and row["follow_up_status"] is not None:
             follow_up_status = row["follow_up_status"]
+        if "scheduled_date" in row.keys() and row["scheduled_date"] is not None:
+            scheduled_date = row["scheduled_date"]
     except Exception:
         pass
 
@@ -377,6 +494,7 @@ def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
         "top_factors": json.loads(row["factors"]),
         "follow_up_priority": row["follow_up_priority"],
         "follow_up_status": follow_up_status,
+        "scheduled_date": scheduled_date,
     }
 
 
@@ -384,25 +502,29 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
     """Persist a prediction result so repeated calls skip SHAP re-computation."""
     now = datetime.now(timezone.utc).isoformat()
     
-    # Check if we already have a status in DB to preserve it
+    # Check if we already have status/scheduled_date in DB to preserve them
     existing_status = "Pending"
+    existing_scheduled_date = None
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT follow_up_status FROM predictions WHERE patient_id = ?", (patient_id,)).fetchone()
+        row = conn.execute("SELECT follow_up_status, scheduled_date FROM predictions WHERE patient_id = ?", (patient_id,)).fetchone()
         if row is not None:
             try:
                 if "follow_up_status" in row.keys() and row["follow_up_status"] is not None:
                     existing_status = row["follow_up_status"]
+                if "scheduled_date" in row.keys() and row["scheduled_date"] is not None:
+                    existing_scheduled_date = row["scheduled_date"]
             except Exception:
                 pass
 
     follow_up_status = result.get("follow_up_status", existing_status)
+    scheduled_date = result.get("scheduled_date", existing_scheduled_date)
 
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """INSERT OR REPLACE INTO predictions
-               (patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at, follow_up_status)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at, follow_up_status, scheduled_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 patient_id,
                 result["risk_percent"],
@@ -411,17 +533,18 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
                 result["follow_up_priority"],
                 now,
                 follow_up_status,
+                scheduled_date,
             ),
         )
         conn.commit()
 
 
-def update_follow_up_status(db_path: str, patient_id: str, status: str) -> None:
-    """Update the follow-up status for a patient's prediction record."""
+def update_follow_up_status(db_path: str, patient_id: str, status: str, scheduled_date: Optional[str] = None) -> None:
+    """Update the follow-up status and scheduled_date for a patient's prediction record."""
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            "UPDATE predictions SET follow_up_status = ? WHERE patient_id = ?",
-            (status, patient_id)
+            "UPDATE predictions SET follow_up_status = ?, scheduled_date = ? WHERE patient_id = ?",
+            (status, scheduled_date, patient_id)
         )
         conn.commit()
 
@@ -439,6 +562,21 @@ def get_dashboard_stats(db_path: str) -> dict:
         # Pending doctor requests
         pending_docs = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'pending'"
+        ).fetchone()[0]
+        
+        # Rejected doctor requests
+        rejected_docs = cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'rejected'"
+        ).fetchone()[0]
+        
+        # Total doctors
+        total_docs = cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'doctor'"
+        ).fetchone()[0]
+        
+        # Total admins
+        total_admins = cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin'"
         ).fetchone()[0]
         
         # Total patients in the registry
@@ -463,6 +601,9 @@ def get_dashboard_stats(db_path: str) -> dict:
     return {
         "approved_doctors": approved_docs,
         "pending_doctors": pending_docs,
+        "rejected_doctors": rejected_docs,
+        "total_doctors": total_docs,
+        "total_admins": total_admins,
         "total_patients": total_patients,
         "high_risk_patients": high_risk,
         "moderate_risk_patients": mod_risk,

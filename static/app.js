@@ -26,6 +26,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const sidebarPatients = document.getElementById("menu-patients");
     const menuRequests = document.getElementById("menu-requests");
     const requestsView = document.getElementById("requests-view");
+    const menuProfile = document.getElementById("menu-profile");
+    const menuDoctors = document.getElementById("menu-doctors");
+    const menuAdmins = document.getElementById("menu-admins");
+    const profileView = document.getElementById("profile-view");
+    const doctorsView = document.getElementById("doctors-view");
+    const adminsView = document.getElementById("admins-view");
     
     // Login Screen Elements
     const loginView = document.getElementById("login-view");
@@ -53,6 +59,31 @@ document.addEventListener("DOMContentLoaded", () => {
     const userDisplayRole = document.getElementById("user-display-role");
     const btnLogout = document.getElementById("btn-logout");
 
+    // Profile Form Elements
+    const profileForm = document.getElementById("profile-form");
+    const profileName = document.getElementById("profile-name");
+    const profileEmail = document.getElementById("profile-email");
+    const profileRole = document.getElementById("profile-role");
+    const profileEducation = document.getElementById("profile-education");
+    const profileReferenceId = document.getElementById("profile-reference-id");
+    const profileErrorBanner = document.getElementById("profile-error-banner");
+    const profileSuccessBanner = document.getElementById("profile-success-banner");
+
+    // Doctors Directory Elements
+    const doctorSearch = document.getElementById("doctor-search");
+    const doctorsStatsContainer = document.getElementById("doctors-stats-container");
+    const doctorsTableBody = document.getElementById("doctors-table-body");
+
+    // Admin Management Elements
+    const createAdminForm = document.getElementById("create-admin-form");
+    const newAdminName = document.getElementById("new-admin-name");
+    const newAdminEmail = document.getElementById("new-admin-email");
+    const newAdminPassword = document.getElementById("new-admin-password");
+    const createAdminErrorBanner = document.getElementById("create-admin-error-banner");
+    const createAdminSuccessBanner = document.getElementById("create-admin-success-banner");
+    const adminsTableBody = document.getElementById("admins-table-body");
+    const adminsCountLabel = document.getElementById("admins-count-label");
+
     // Access Requests Views Elements
     const requestsEmptyState = document.getElementById("requests-empty-state");
     const requestsTableContainer = document.getElementById("requests-table-container");
@@ -70,6 +101,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const patientListLoading = document.getElementById("patient-list-loading");
     const patientTableBody = document.getElementById("patient-table-body");
     const patientShowingLabel = document.getElementById("patient-showing-label");
+    const patientFilterTabs = document.getElementById("patient-filter-tabs");
+    const tabFilterAll = document.getElementById("tab-filter-all");
+    const tabFilterMy = document.getElementById("tab-filter-my");
+    const adminDoctorFilter = document.getElementById("admin-doctor-filter");
+
+    let activePatientFilter = "all";
 
     // Detail Screen Header Elements
     const backLink = document.getElementById("back-link");
@@ -80,12 +117,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Detail Screen Loading/Results Containers
     const detailLoadingState = document.getElementById("detail-loading-state");
-    const detailResultsContainer = document.getElementById("detail-results-container");
-    const progressRingFill = document.getElementById("progress-ring-fill");
-    const detailRiskPercent = document.getElementById("detail-risk-percent");
-    const detailRiskBadge = document.getElementById("detail-risk-badge");
-    
-    // Priority Banner Elements
+    // Follow-Up Status & Scheduling Elements
+    const followUpStatusButtons = document.getElementById("follow-up-status-buttons");
+    const scheduleDateContainer = document.getElementById("schedule-date-container");
+    const scheduledDateInput = document.getElementById("scheduled-date-input");
+    const btnSaveSchedule = document.getElementById("btn-save-schedule");
+    const scheduledDateDisplay = document.getElementById("scheduled-date-display");
+
+    function formatScheduledDate(isoStr) {
+        if (!isoStr) return "";
+        try {
+            const d = new Date(isoStr);
+            if (isNaN(d.getTime())) return isoStr;
+            return d.toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true
+            });
+        } catch (e) {
+            return isoStr;
+        }
+    }
     const priorityAlertBanner = document.getElementById("priority-alert-banner");
     const priorityBannerIcon = document.getElementById("priority-banner-icon");
     const priorityBannerTitle = document.getElementById("priority-banner-title");
@@ -288,7 +343,15 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderPatientTable() {
         if (!allPatientsCached) return;
 
-        const patientsCopy = [...allPatientsCached];
+        const currentUser = JSON.parse(sessionStorage.getItem("user") || "{}");
+        let patientsCopy = [...allPatientsCached];
+
+        // Apply active patient filter tab/dropdown
+        if (activePatientFilter === "my") {
+            patientsCopy = patientsCopy.filter(p => p.assigned_doctor_id === currentUser.user_id);
+        } else if (activePatientFilter !== "all") {
+            patientsCopy = patientsCopy.filter(p => p.assigned_doctor_id === activePatientFilter);
+        }
         
         if (sortState === "risk") {
             patientsCopy.sort((a, b) => {
@@ -311,6 +374,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         patientTableBody.innerHTML = "";
+
+        if (patientsCopy.length === 0) {
+            patientTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No patients match the selected filter.</td></tr>`;
+            updateShowingCount();
+            return;
+        }
 
         patientsCopy.forEach(patient => {
             let uiId = `P-${patient.patient_id}`;
@@ -336,8 +405,37 @@ document.addEventListener("DOMContentLoaded", () => {
             // Follow-up status badge next to Patient ID
             const followUpStatus = patient.follow_up_status || "Pending";
             let badgeClass = "badge-pending";
-            if (followUpStatus === "Scheduled") badgeClass = "badge-scheduled";
-            if (followUpStatus === "Completed") badgeClass = "badge-completed";
+            let badgeText = followUpStatus;
+            
+            if (followUpStatus === "Scheduled") {
+                badgeClass = "badge-scheduled";
+                if (patient.scheduled_date) {
+                    badgeText = `Scheduled: ${formatScheduledDate(patient.scheduled_date)}`;
+                }
+            } else if (followUpStatus === "Completed") {
+                badgeClass = "badge-completed";
+            }
+
+            // Assigned Doctor Column HTML
+            let assignedDoctorHtml = "";
+            if (currentUser.role === "admin") {
+                let optionsHtml = `<option value="">-- Unassigned --</option>`;
+                cachedDoctorsList.forEach(doc => {
+                    if (doc.status === "approved") {
+                        const isSel = doc.user_id === patient.assigned_doctor_id ? "selected" : "";
+                        optionsHtml += `<option value="${doc.user_id}" ${isSel}>${doc.name}</option>`;
+                    }
+                });
+                assignedDoctorHtml = `<select class="select-doctor-assign" data-patient-id="${patient.patient_id}">${optionsHtml}</select>`;
+            } else {
+                if (patient.assigned_doctor_id === currentUser.user_id) {
+                    assignedDoctorHtml = `<span class="badge-assigned-you">Assigned to You</span>`;
+                } else if (patient.assigned_doctor_name) {
+                    assignedDoctorHtml = `<span class="badge-assigned-other">${patient.assigned_doctor_name}</span>`;
+                } else {
+                    assignedDoctorHtml = `<span class="badge-unassigned">Unassigned</span>`;
+                }
+            }
 
             const row = document.createElement("tr");
             row.dataset.id = patient.patient_id;
@@ -349,15 +447,45 @@ document.addEventListener("DOMContentLoaded", () => {
             row.innerHTML = `
                 <td class="patient-table-id">
                     ${uiId}
-                    <span class="status-badge ${badgeClass}">${followUpStatus}</span>
+                    <span class="status-badge ${badgeClass}">${badgeText}</span>
                 </td>
                 <td>${ageGroup}</td>
                 <td>${gender}</td>
                 <td>${lastEncounter}</td>
+                <td>${assignedDoctorHtml}</td>
                 <td>
                     <button class="btn-assess">Assess Risk &rarr;</button>
                 </td>
             `;
+
+            // Admin inline reassignment handler
+            const selectAssign = row.querySelector(".select-doctor-assign");
+            if (selectAssign) {
+                selectAssign.addEventListener("click", (e) => e.stopPropagation());
+                selectAssign.addEventListener("change", async (e) => {
+                    e.stopPropagation();
+                    const newDoctorId = e.target.value;
+                    try {
+                        const token = sessionStorage.getItem("token");
+                        const res = await fetch(`/patients/${patient.patient_id}/assign`, {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": "Bearer " + token
+                            },
+                            body: JSON.stringify({ doctor_id: newDoctorId })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            throw new Error(err.detail || "Failed to assign doctor.");
+                        }
+                        patient.assigned_doctor_id = newDoctorId || null;
+                        fetchPatients(); // Refresh list & update UI
+                    } catch (err) {
+                        alert(`Assignment error: ${err.message}`);
+                    }
+                });
+            }
 
             // Add click triggers
             const triggerAssess = () => {
@@ -365,7 +493,7 @@ document.addEventListener("DOMContentLoaded", () => {
             };
             
             row.addEventListener("click", (e) => {
-                if (e.target.tagName !== "BUTTON") triggerAssess();
+                if (e.target.tagName !== "BUTTON" && e.target.tagName !== "SELECT") triggerAssess();
             });
             row.querySelector(".btn-assess").addEventListener("click", (e) => {
                 e.stopPropagation();
@@ -588,7 +716,107 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         // Render follow-up status button group selection state
-        renderFollowUpStatus(data.follow_up_status || "Pending", data.patient_id);
+        renderFollowUpStatus(data.follow_up_status || "Pending", data.scheduled_date, data.patient_id);
+    }
+
+    function renderFollowUpStatus(currentStatus, currentScheduledDate, patientId) {
+        if (!followUpStatusButtons) return;
+        
+        const buttons = followUpStatusButtons.querySelectorAll(".btn-status-toggle");
+        buttons.forEach(btn => {
+            if (btn.dataset.status === currentStatus) {
+                btn.classList.add("active");
+            } else {
+                btn.classList.remove("active");
+            }
+        });
+
+        if (currentStatus === "Scheduled") {
+            if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
+            if (scheduledDateInput) scheduledDateInput.value = currentScheduledDate || "";
+            if (currentScheduledDate && scheduledDateDisplay) {
+                scheduledDateDisplay.textContent = `📅 Appointment: ${formatScheduledDate(currentScheduledDate)}`;
+                scheduledDateDisplay.style.display = "block";
+            } else if (scheduledDateDisplay) {
+                scheduledDateDisplay.style.display = "none";
+            }
+        } else {
+            if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
+            if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
+        }
+    }
+
+    // Follow-up status button click handlers
+    if (followUpStatusButtons) {
+        followUpStatusButtons.addEventListener("click", async (e) => {
+            const btn = e.target.closest(".btn-status-toggle");
+            if (!btn || !activePatientId) return;
+
+            const newStatus = btn.dataset.status;
+
+            if (newStatus === "Scheduled") {
+                followUpStatusButtons.querySelectorAll(".btn-status-toggle").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
+                if (scheduledDateInput) scheduledDateInput.focus();
+                return;
+            }
+
+            // Pending or Completed
+            if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
+            if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
+
+            try {
+                const token = sessionStorage.getItem("token");
+                const res = await fetch(`/predict/${activePatientId}/follow-up`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    body: JSON.stringify({ status: newStatus, scheduled_date: null })
+                });
+                if (!res.ok) throw new Error("Failed to update status.");
+                
+                followUpStatusButtons.querySelectorAll(".btn-status-toggle").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                fetchPatients();
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        });
+    }
+
+    if (btnSaveSchedule) {
+        btnSaveSchedule.addEventListener("click", async () => {
+            if (!activePatientId) return;
+            const schedDate = scheduledDateInput.value;
+            if (!schedDate) {
+                alert("Please select a date and time for the follow-up appointment.");
+                return;
+            }
+
+            try {
+                const token = sessionStorage.getItem("token");
+                const res = await fetch(`/predict/${activePatientId}/follow-up`, {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    body: JSON.stringify({ status: "Scheduled", scheduled_date: schedDate })
+                });
+                if (!res.ok) throw new Error("Failed to save scheduled appointment.");
+
+                if (scheduledDateDisplay) {
+                    scheduledDateDisplay.textContent = `📅 Appointment: ${formatScheduledDate(schedDate)}`;
+                    scheduledDateDisplay.style.display = "block";
+                }
+                fetchPatients();
+            } catch (err) {
+                alert(`Error saving schedule: ${err.message}`);
+            }
+        });
     }
 
     // SVG Circular Ring Offset Calculation & Counter Animation
@@ -620,6 +848,9 @@ document.addEventListener("DOMContentLoaded", () => {
         detailView.classList.add("hidden");
         newPatientView.classList.add("hidden");
         requestsView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.add("hidden");
         overviewView.classList.remove("hidden");
         patientSearch.value = "";
         
@@ -627,6 +858,9 @@ document.addEventListener("DOMContentLoaded", () => {
         sidebarOverview.classList.add("active");
         sidebarPatients.classList.remove("active");
         menuRequests.classList.remove("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.remove("active");
         
         // Show all table rows
         const rows = patientTableBody.querySelectorAll("tr");
@@ -638,6 +872,9 @@ document.addEventListener("DOMContentLoaded", () => {
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         requestsView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.add("hidden");
         newPatientView.classList.remove("hidden");
         formErrorBanner.style.display = "none";
         formErrorBanner.textContent = "";
@@ -647,19 +884,85 @@ document.addEventListener("DOMContentLoaded", () => {
         sidebarOverview.classList.remove("active");
         sidebarPatients.classList.remove("active");
         menuRequests.classList.remove("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.remove("active");
     }
 
     function showRequestsView() {
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.add("hidden");
         requestsView.classList.remove("hidden");
         
         sidebarOverview.classList.remove("active");
         sidebarPatients.classList.remove("active");
         menuRequests.classList.add("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.remove("active");
         
         fetchPendingRequests();
+    }
+
+    function showProfileView() {
+        detailView.classList.add("hidden");
+        overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
+        requestsView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.add("hidden");
+        profileView.classList.remove("hidden");
+
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+        menuProfile.classList.add("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.remove("active");
+
+        fetchUserProfile();
+    }
+
+    function showDoctorsView() {
+        detailView.classList.add("hidden");
+        overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
+        requestsView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        adminsView.classList.add("hidden");
+        doctorsView.classList.remove("hidden");
+
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.add("active");
+        menuAdmins.classList.remove("active");
+
+        fetchDoctorsList();
+    }
+
+    function showAdminsView() {
+        detailView.classList.add("hidden");
+        overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
+        requestsView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.remove("hidden");
+
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.add("active");
+
+        fetchAdminsList();
     }
 
     // Bind Navigation Back
@@ -675,13 +978,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     sidebarPatients.addEventListener("click", (e) => {
         e.preventDefault();
-        // Render system modal or show system info section
         alert("DiabCare AI Readmission Predictor prototype system.\nExpected Baseline Performance: AUC 0.65-0.69.");
     });
 
     menuRequests.addEventListener("click", (e) => {
         e.preventDefault();
         showRequestsView();
+    });
+
+    menuProfile.addEventListener("click", (e) => {
+        e.preventDefault();
+        showProfileView();
+    });
+
+    menuDoctors.addEventListener("click", (e) => {
+        e.preventDefault();
+        showDoctorsView();
+    });
+
+    menuAdmins.addEventListener("click", (e) => {
+        e.preventDefault();
+        showAdminsView();
     });
 
     btnNewScreening.addEventListener("click", (e) => {
@@ -910,11 +1227,20 @@ document.addEventListener("DOMContentLoaded", () => {
         userDisplayRole.textContent = user.role.charAt(0).toUpperCase() + user.role.slice(1);
         userAvatarInitials.textContent = getInitials(user.name);
         
-        // Gated Access Requests for Admins
+        // Gated Access Requests, Doctors Directory, and Manage Admins for Admins
         if (user.role === "admin") {
             menuRequests.classList.remove("hidden");
+            menuDoctors.classList.remove("hidden");
+            menuAdmins.classList.remove("hidden");
+            if (patientFilterTabs) patientFilterTabs.classList.add("hidden");
+            if (adminDoctorFilter) adminDoctorFilter.classList.remove("hidden");
+            fetchDoctorsList();
         } else {
             menuRequests.classList.add("hidden");
+            menuDoctors.classList.add("hidden");
+            menuAdmins.classList.add("hidden");
+            if (patientFilterTabs) patientFilterTabs.classList.remove("hidden");
+            if (adminDoctorFilter) adminDoctorFilter.classList.add("hidden");
         }
         
         // Trigger patient list load
@@ -1260,12 +1586,297 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Bind Sorting Selection event trigger
-    const sortSelect = document.getElementById("sort-select");
-    if (sortSelect) {
-        sortSelect.addEventListener("change", (e) => {
-            sortState = e.target.value;
+    // ---------------------------------------------------------------------------
+    // User Profile Feature (Doctor & Admin Profile Management)
+    // ---------------------------------------------------------------------------
+    async function fetchUserProfile() {
+        try {
+            const token = sessionStorage.getItem("token");
+            if (!token) return;
+            const response = await fetch("/user/profile", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (!response.ok) throw new Error("Failed to fetch profile.");
+            const data = await response.json();
+            profileName.value = data.name || "";
+            profileEmail.value = data.email || "";
+            profileRole.value = data.role || "";
+            profileEducation.value = data.education || "";
+            profileReferenceId.value = data.reference_id || "";
+            profileErrorBanner.style.display = "none";
+            profileSuccessBanner.style.display = "none";
+        } catch (err) {
+            console.error("Error loading user profile:", err);
+        }
+    }
+
+    if (profileForm) {
+        profileForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            profileErrorBanner.style.display = "none";
+            profileSuccessBanner.style.display = "none";
+
+            const name = profileName.value.trim();
+            const education = profileEducation.value.trim();
+            const reference_id = profileReferenceId.value.trim();
+
+            if (!name) {
+                profileErrorBanner.textContent = "Full Name is required.";
+                profileErrorBanner.style.display = "block";
+                return;
+            }
+
+            try {
+                const token = sessionStorage.getItem("token");
+                const response = await fetch("/user/profile", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    body: JSON.stringify({ name, education, reference_id })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || "Failed to update profile.");
+                }
+
+                const updatedUser = await response.json();
+                
+                // Update local session storage
+                const sessionUser = JSON.parse(sessionStorage.getItem("user") || "{}");
+                sessionUser.name = updatedUser.name;
+                sessionStorage.setItem("user", JSON.stringify(sessionUser));
+
+                userDisplayName.textContent = updatedUser.name;
+                userAvatarInitials.textContent = getInitials(updatedUser.name);
+
+                profileSuccessBanner.textContent = "Profile updated and saved successfully!";
+                profileSuccessBanner.style.display = "block";
+            } catch (err) {
+                profileErrorBanner.textContent = err.message;
+                profileErrorBanner.style.display = "block";
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Doctors Directory & Stats Feature (Admin Only)
+    // ---------------------------------------------------------------------------
+    let cachedDoctorsList = [];
+
+    async function fetchDoctorsList() {
+        try {
+            const token = sessionStorage.getItem("token");
+            if (!token) return;
+            const response = await fetch("/admin/doctors", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (!response.ok) throw new Error("Failed to load doctor records.");
+            cachedDoctorsList = await response.json();
+            
+            populateAdminDoctorFilterOptions();
+            renderDoctorsStatsAndTable();
+        } catch (err) {
+            console.error("Error fetching doctors list:", err);
+        }
+    }
+
+    function populateAdminDoctorFilterOptions() {
+        if (!adminDoctorFilter) return;
+        const currentVal = adminDoctorFilter.value;
+        adminDoctorFilter.innerHTML = `<option value="all">Filter: All Doctors</option>`;
+        cachedDoctorsList.forEach(doc => {
+            if (doc.status === "approved") {
+                const opt = document.createElement("option");
+                opt.value = doc.user_id;
+                opt.textContent = `Doctor: ${doc.name}`;
+                adminDoctorFilter.appendChild(opt);
+            }
+        });
+        adminDoctorFilter.value = currentVal || "all";
+    }
+
+    // Filter controls event triggers
+    if (tabFilterAll && tabFilterMy) {
+        tabFilterAll.addEventListener("click", () => {
+            activePatientFilter = "all";
+            tabFilterAll.classList.add("active");
+            tabFilterMy.classList.remove("active");
             renderPatientTable();
+        });
+
+        tabFilterMy.addEventListener("click", () => {
+            activePatientFilter = "my";
+            tabFilterMy.classList.add("active");
+            tabFilterAll.classList.remove("active");
+            renderPatientTable();
+        });
+    }
+
+    if (adminDoctorFilter) {
+        adminDoctorFilter.addEventListener("change", (e) => {
+            activePatientFilter = e.target.value;
+            renderPatientTable();
+        });
+    }
+
+    function renderDoctorsStatsAndTable() {
+        const doctors = cachedDoctorsList;
+        const total = doctors.length;
+        const approved = doctors.filter(d => d.status === 'approved').length;
+        const pending = doctors.filter(d => d.status === 'pending').length;
+        const rejected = doctors.filter(d => d.status === 'rejected').length;
+
+        doctorsStatsContainer.innerHTML = `
+            <div class="stat-card">
+                <span class="stat-card-title">Total Registered Doctors</span>
+                <span class="stat-card-value">${total}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-title">Approved Doctors</span>
+                <span class="stat-card-value" style="color: var(--low-color);">${approved}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-title">Pending Approvals</span>
+                <span class="stat-card-value" style="color: var(--mod-color);">${pending}</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-card-title">Rejected Applications</span>
+                <span class="stat-card-value" style="color: var(--high-color);">${rejected}</span>
+            </div>
+        `;
+
+        renderDoctorsTable(doctors);
+    }
+
+    function renderDoctorsTable(doctors) {
+        doctorsTableBody.innerHTML = "";
+        if (doctors.length === 0) {
+            doctorsTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No doctor records found.</td></tr>`;
+            return;
+        }
+
+        doctors.forEach(doc => {
+            const row = document.createElement("tr");
+            let badgeClass = "badge-pending";
+            if (doc.status === "approved") badgeClass = "badge-completed";
+            if (doc.status === "rejected") badgeClass = "badge-scheduled";
+
+            let joinedDate = "Unknown";
+            if (doc.created_at) {
+                try { joinedDate = new Date(doc.created_at).toLocaleDateString(); } catch (e) {}
+            }
+
+            row.innerHTML = `
+                <td style="font-weight: 700;">${doc.name}</td>
+                <td>${doc.email}</td>
+                <td>${doc.education || '<span style="color:var(--text-muted); font-style:italic;">Not specified</span>'}</td>
+                <td><code>${doc.reference_id || 'N/A'}</code></td>
+                <td><span class="status-badge ${badgeClass}" style="text-transform: capitalize;">${doc.status}</span></td>
+                <td>${joinedDate}</td>
+            `;
+            doctorsTableBody.appendChild(row);
+        });
+    }
+
+    if (doctorSearch) {
+        doctorSearch.addEventListener("input", (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            const filtered = cachedDoctorsList.filter(doc => {
+                const name = (doc.name || "").toLowerCase();
+                const email = (doc.email || "").toLowerCase();
+                const edu = (doc.education || "").toLowerCase();
+                const ref = (doc.reference_id || "").toLowerCase();
+                return name.includes(query) || email.includes(query) || edu.includes(query) || ref.includes(query);
+            });
+            renderDoctorsTable(filtered);
+        });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Admin Management Feature (Admin Only)
+    // ---------------------------------------------------------------------------
+    async function fetchAdminsList() {
+        try {
+            const token = sessionStorage.getItem("token");
+            if (!token) return;
+            const response = await fetch("/admin/admins", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (!response.ok) throw new Error("Failed to load admin list.");
+            const admins = await response.json();
+            
+            adminsCountLabel.textContent = `Active System Administrators (${admins.length})`;
+            adminsTableBody.innerHTML = "";
+
+            admins.forEach(adm => {
+                const row = document.createElement("tr");
+                let createdDate = "System Seed";
+                if (adm.created_at) {
+                    try { createdDate = new Date(adm.created_at).toLocaleDateString(); } catch (e) {}
+                }
+
+                row.innerHTML = `
+                    <td style="font-weight: 700;">${adm.name}</td>
+                    <td>${adm.email}</td>
+                    <td><code>${adm.user_id}</code></td>
+                    <td>${createdDate}</td>
+                `;
+                adminsTableBody.appendChild(row);
+            });
+        } catch (err) {
+            console.error("Error fetching admins list:", err);
+        }
+    }
+
+    if (createAdminForm) {
+        createAdminForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            createAdminErrorBanner.style.display = "none";
+            createAdminSuccessBanner.style.display = "none";
+
+            const name = newAdminName.value.trim();
+            const email = newAdminEmail.value.trim();
+            const password = newAdminPassword.value;
+
+            if (!email || !password) {
+                createAdminErrorBanner.textContent = "Email and Password are required.";
+                createAdminErrorBanner.style.display = "block";
+                return;
+            }
+
+            try {
+                const token = sessionStorage.getItem("token");
+                const response = await fetch("/admin/create-admin", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer " + token
+                    },
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || "Failed to create administrator.");
+                }
+
+                const result = await response.json();
+                createAdminSuccessBanner.textContent = result.message;
+                createAdminSuccessBanner.style.display = "block";
+
+                newAdminName.value = "";
+                newAdminEmail.value = "";
+                newAdminPassword.value = "";
+
+                fetchAdminsList();
+                fetchDashboardStats();
+            } catch (err) {
+                createAdminErrorBanner.textContent = err.message;
+                createAdminErrorBanner.style.display = "block";
+            }
         });
     }
 
