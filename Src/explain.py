@@ -326,8 +326,16 @@ def explain_patient(
     risk_prob = pipeline.predict_proba(patient_row)[0, 1]
     risk_percent = round(float(risk_prob) * 100, 1)
 
-    # Step 4: SHAP explanation via TreeExplainer on the raw LightGBM model
-    explainer = shap.TreeExplainer(lgbm_model)
+    # Step 4: SHAP explanation via cached TreeExplainer on the raw LightGBM model
+    global _explainer_cache
+    if '_explainer_cache' not in globals():
+        _explainer_cache = {}
+    
+    model_key = id(lgbm_model)
+    if model_key not in _explainer_cache:
+        _explainer_cache[model_key] = shap.TreeExplainer(lgbm_model)
+    explainer = _explainer_cache[model_key]
+
     shap_values = explainer.shap_values(X_transformed)
 
     # Handle both old shap (list of arrays) and new shap (list of 2D arrays)
@@ -361,7 +369,11 @@ def explain_patient(
     for feat_name, shap_val in shap_pairs[:top_n]:
         direction = "increases risk" if shap_val > 0 else "decreases risk"
         plain_name = _feature_name_to_plain(feat_name)
-        top_factors.append({"factor": plain_name, "direction": direction})
+        top_factors.append({
+            "factor": plain_name,
+            "direction": direction,
+            "shap_value": float(shap_val)
+        })
 
     # Step 6: Derive category and priority
     category = _risk_category(risk_percent)

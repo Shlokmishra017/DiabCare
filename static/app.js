@@ -117,6 +117,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Detail Screen Loading/Results Containers
     const detailLoadingState = document.getElementById("detail-loading-state");
+    const detailResultsContainer = document.getElementById("detail-results-container");
+    const progressRingFill = document.getElementById("progress-ring-fill");
+    const detailRiskPercent = document.getElementById("detail-risk-percent");
+    const detailRiskBadge = document.getElementById("detail-risk-badge");
+
+    let activePatientId = null; // Track current active patient ID for follow-ups
     // Follow-Up Status & Scheduling Elements
     const followUpStatusButtons = document.getElementById("follow-up-status-buttons");
     const scheduleDateContainer = document.getElementById("schedule-date-container");
@@ -416,6 +422,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 badgeClass = "badge-completed";
             }
 
+            let statusHtml = `<span class="status-badge ${badgeClass}">${badgeText}</span>`;
+            if (currentUser.role === "admin") {
+                statusHtml = `
+                    <select class="select-status-toggle" data-patient-id="${patient.patient_id}" style="margin-left: 0.5rem; font-size: 0.78rem; font-weight: 700; padding: 0.15rem 0.35rem; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer; background-color: #f8fafc; color: var(--text-primary);">
+                        <option value="Pending" ${followUpStatus === "Pending" ? "selected" : ""}>Pending</option>
+                        <option value="Scheduled" ${followUpStatus === "Scheduled" ? "selected" : ""}>Scheduled</option>
+                        <option value="Completed" ${followUpStatus === "Completed" ? "selected" : ""}>Completed</option>
+                    </select>
+                `;
+            }
+
             // Assigned Doctor Column HTML
             let assignedDoctorHtml = "";
             if (currentUser.role === "admin") {
@@ -447,7 +464,7 @@ document.addEventListener("DOMContentLoaded", () => {
             row.innerHTML = `
                 <td class="patient-table-id">
                     ${uiId}
-                    <span class="status-badge ${badgeClass}">${badgeText}</span>
+                    ${statusHtml}
                 </td>
                 <td>${ageGroup}</td>
                 <td>${gender}</td>
@@ -483,6 +500,35 @@ document.addEventListener("DOMContentLoaded", () => {
                         fetchPatients(); // Refresh list & update UI
                     } catch (err) {
                         alert(`Assignment error: ${err.message}`);
+                    }
+                });
+            }
+
+            // Admin inline status change handler
+            const selectStatus = row.querySelector(".select-status-toggle");
+            if (selectStatus) {
+                selectStatus.addEventListener("click", (e) => e.stopPropagation());
+                selectStatus.addEventListener("change", async (e) => {
+                    e.stopPropagation();
+                    const newStatus = e.target.value;
+                    try {
+                        const token = sessionStorage.getItem("token");
+                        const res = await fetch(`/predict/${patient.patient_id}/follow-up`, {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": "Bearer " + token
+                            },
+                            body: JSON.stringify({ status: newStatus, scheduled_date: null })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json().catch(() => ({}));
+                            throw new Error(err.detail || "Failed to update status.");
+                        }
+                        patient.follow_up_status = newStatus;
+                        fetchPatients(); // Refresh list & update UI
+                    } catch (err) {
+                        alert(`Status update error: ${err.message}`);
                     }
                 });
             }
@@ -539,6 +585,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 3. Load prediction and render Detail view (SPA)
     async function openPatientScreening(patientId, uiId, ageGroup, gender, lastEncounter) {
+        console.log("openPatientScreening called, patientId:", patientId);
+        activePatientId = patientId;
         // Toggle view
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -652,6 +700,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // --- Render SHAP Top Risk Factors ---
         detailFactorsList.innerHTML = "";
         
+        // Find maximum absolute SHAP value for scaling the bars relative to the strongest factor
+        const maxShap = Math.max(...top_factors.map(f => Math.abs(f.shap_value || 0.1)), 0.1);
+
         top_factors.forEach(item => {
             const isIncrease = item.direction.toLowerCase().includes("increase");
             const isDecrease = item.direction.toLowerCase().includes("decrease");
@@ -669,8 +720,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const labelText = item.factor;
             const factorRow = document.createElement("div");
             factorRow.className = "factor-card-box";
+            factorRow.style.flexDirection = "column";
+            factorRow.style.alignItems = "stretch";
+            factorRow.style.gap = "0.5rem";
             
             const rawValue = getRawValueForFactor(labelText);
+            const shapVal = item.shap_value || 0;
+            const relativeWidth = ((Math.abs(shapVal) / maxShap) * 100).toFixed(1);
 
             factorRow.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 1rem; width: 100%;">
@@ -679,20 +735,29 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="factor-card-content">
                         <span class="factor-card-title">${labelText}</span>
-                        <span class="factor-card-subtext">${subText}</span>
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+                            <span class="factor-card-subtext" style="margin-top: 0;">${subText}</span>
+                            <span style="font-size: 0.75rem; font-weight: 700; color: ${isIncrease ? 'var(--high-color)' : 'var(--low-color)'};">SHAP: ${shapVal > 0 ? '+' : ''}${shapVal.toFixed(3)}</span>
+                        </div>
                     </div>
                     <div class="factor-chevron">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </div>
                 </div>
-                <div class="factor-expanded-details hidden">
+                <!-- Real horizontal SHAP bar chart -->
+                <div style="width: 100%; padding-left: calc(36px + 1rem); box-sizing: border-box;">
+                    <div style="background: #f1f5f9; height: 6px; border-radius: 3px; overflow: hidden; width: 100%; position: relative;">
+                        <div style="width: ${relativeWidth}%; height: 100%; border-radius: 3px; background-color: ${isIncrease ? 'var(--high-color)' : 'var(--low-color)'}; transition: width 0.8s ease-out;"></div>
+                    </div>
+                </div>
+                <div class="factor-expanded-details hidden" style="margin-top: 0.25rem; margin-left: calc(36px + 1rem);">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                     <span style="margin-left: 0.25rem;"><strong>Clinical Value Recorded:</strong> ${rawValue}</span>
                 </div>
             `;
 
             // Expansion click handler
-            factorRow.addEventListener("click", () => {
+            factorRow.addEventListener("click", (e) => {
                 if (window.getSelection().toString()) return;
                 
                 const details = factorRow.querySelector(".factor-expanded-details");
@@ -701,13 +766,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 if (isHidden) {
                     details.classList.remove("hidden");
-                    factorRow.style.flexDirection = "column";
-                    factorRow.style.alignItems = "stretch";
                     chevron.style.transform = "rotate(180deg)";
                 } else {
                     details.classList.add("hidden");
-                    factorRow.style.flexDirection = "row";
-                    factorRow.style.alignItems = "center";
                     chevron.style.transform = "rotate(0deg)";
                 }
             });
@@ -750,21 +811,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (followUpStatusButtons) {
         followUpStatusButtons.addEventListener("click", async (e) => {
             const btn = e.target.closest(".btn-status-toggle");
+            console.log("followUpStatusButtons clicked:", btn ? btn.dataset.status : null, "activePatientId:", activePatientId);
             if (!btn || !activePatientId) return;
 
             const newStatus = btn.dataset.status;
 
             if (newStatus === "Scheduled") {
-                followUpStatusButtons.querySelectorAll(".btn-status-toggle").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
                 if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
-                if (scheduledDateInput) scheduledDateInput.focus();
-                return;
+            } else {
+                if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
+                if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
             }
-
-            // Pending or Completed
-            if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
-            if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
 
             try {
                 const token = sessionStorage.getItem("token");
@@ -1174,6 +1231,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             const predictionResult = await response.json();
+            activePatientId = predictionResult.patient_id;
 
             // Cache raw features so the SHAP expander has access to them
             activePatientFeatures = payload;
@@ -1484,6 +1542,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = await fetch("/dashboard/stats", {
                 headers: { "Authorization": "Bearer " + token }
             });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
             if (!response.ok) {
                 throw new Error("Failed to fetch dashboard stats.");
             }
@@ -1596,6 +1658,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = await fetch("/user/profile", {
                 headers: { "Authorization": "Bearer " + token }
             });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
             if (!response.ok) throw new Error("Failed to fetch profile.");
             const data = await response.json();
             profileName.value = data.name || "";
@@ -1637,6 +1703,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     body: JSON.stringify({ name, education, reference_id })
                 });
 
+                if (response.status === 401) {
+                    handleLogout("Session expired. Please log in again.");
+                    throw new Error("Unauthorized");
+                }
+
                 if (!response.ok) {
                     const err = await response.json().catch(() => ({}));
                     throw new Error(err.detail || "Failed to update profile.");
@@ -1673,6 +1744,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = await fetch("/admin/doctors", {
                 headers: { "Authorization": "Bearer " + token }
             });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
             if (!response.ok) throw new Error("Failed to load doctor records.");
             cachedDoctorsList = await response.json();
             
@@ -1805,6 +1880,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = await fetch("/admin/admins", {
                 headers: { "Authorization": "Bearer " + token }
             });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                throw new Error("Unauthorized");
+            }
             if (!response.ok) throw new Error("Failed to load admin list.");
             const admins = await response.json();
             
@@ -1857,6 +1936,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     },
                     body: JSON.stringify({ name, email, password })
                 });
+
+                if (response.status === 401) {
+                    handleLogout("Session expired. Please log in again.");
+                    throw new Error("Unauthorized");
+                }
 
                 if (!response.ok) {
                     const err = await response.json().catch(() => ({}));

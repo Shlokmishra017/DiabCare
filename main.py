@@ -80,7 +80,12 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # Security & JWT Configuration
 # ---------------------------------------------------------------------------
-JWT_SECRET = "diabcare_secret_key_123456"
+# JWT Secret Configuration: read from env variable; fallback to secure random key if not configured in production
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    import secrets
+    JWT_SECRET = secrets.token_hex(32)
+    # Using a generated key ensures security, but invalidates active sessions across restarts if the env var isn't set.
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -299,6 +304,7 @@ class PredictNewRequest(BaseModel):
 class FactorItem(BaseModel):
     factor: str
     direction: str
+    shap_value: float = 0.0
 
 
 class PredictResponse(BaseModel):
