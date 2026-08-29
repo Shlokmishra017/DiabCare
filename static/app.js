@@ -127,8 +127,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const followUpStatusButtons = document.getElementById("follow-up-status-buttons");
     const scheduleDateContainer = document.getElementById("schedule-date-container");
     const scheduledDateInput = document.getElementById("scheduled-date-input");
-    const btnSaveSchedule = document.getElementById("btn-save-schedule");
+    const btnSaveFollowUpStatus = document.getElementById("btn-save-follow-up-status");
+    const statusSaveFeedback = document.getElementById("status-save-feedback");
+    const statusUnauthorizedMessage = document.getElementById("status-unauthorized-message");
     const scheduledDateDisplay = document.getElementById("scheduled-date-display");
+
+    let selectedFollowUpStatus = "Pending";
 
     function formatScheduledDate(isoStr) {
         if (!isoStr) return "";
@@ -783,23 +787,60 @@ document.addEventListener("DOMContentLoaded", () => {
     function renderFollowUpStatus(currentStatus, currentScheduledDate, patientId) {
         if (!followUpStatusButtons) return;
         
+        selectedFollowUpStatus = currentStatus || "Pending";
+
+        if (statusSaveFeedback) {
+            statusSaveFeedback.style.display = "none";
+            statusSaveFeedback.textContent = "";
+        }
+
+        // Check current user authorization
+        const currentUser = JSON.parse(sessionStorage.getItem("user") || "{}");
+        const patientObj = allPatientsCached.find(p => p.patient_id === patientId);
+
+        let isAuthorized = true;
+        if (currentUser.role === "doctor") {
+            if (patientObj && patientObj.assigned_doctor_id !== currentUser.user_id) {
+                isAuthorized = false;
+            }
+        }
+
+        if (!isAuthorized) {
+            if (statusUnauthorizedMessage) statusUnauthorizedMessage.classList.remove("hidden");
+            if (btnSaveFollowUpStatus) btnSaveFollowUpStatus.disabled = true;
+        } else {
+            if (statusUnauthorizedMessage) statusUnauthorizedMessage.classList.add("hidden");
+            if (btnSaveFollowUpStatus) btnSaveFollowUpStatus.disabled = false;
+        }
+
         const buttons = followUpStatusButtons.querySelectorAll(".btn-status-toggle");
         buttons.forEach(btn => {
-            if (btn.dataset.status === currentStatus) {
+            btn.disabled = !isAuthorized;
+            if (btn.dataset.status === selectedFollowUpStatus) {
                 btn.classList.add("active");
             } else {
                 btn.classList.remove("active");
             }
         });
 
-        if (currentStatus === "Scheduled") {
+        if (scheduledDateInput) {
+            scheduledDateInput.disabled = !isAuthorized;
+            scheduledDateInput.value = currentScheduledDate || "";
+        }
+
+        if (selectedFollowUpStatus === "Scheduled") {
             if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
-            if (scheduledDateInput) scheduledDateInput.value = currentScheduledDate || "";
             if (currentScheduledDate && scheduledDateDisplay) {
                 scheduledDateDisplay.textContent = `📅 Appointment: ${formatScheduledDate(currentScheduledDate)}`;
                 scheduledDateDisplay.style.display = "block";
             } else if (scheduledDateDisplay) {
                 scheduledDateDisplay.style.display = "none";
+            }
+        } else if (selectedFollowUpStatus === "Completed" && currentScheduledDate) {
+            if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
+            if (scheduledDateDisplay) {
+                scheduledDateDisplay.textContent = `📅 Scheduled Appointment: ${formatScheduledDate(currentScheduledDate)}`;
+                scheduledDateDisplay.style.display = "block";
             }
         } else {
             if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
@@ -807,53 +848,60 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Follow-up status button click handlers
+    // Follow-up status button local click handlers
     if (followUpStatusButtons) {
-        followUpStatusButtons.addEventListener("click", async (e) => {
+        followUpStatusButtons.addEventListener("click", (e) => {
             const btn = e.target.closest(".btn-status-toggle");
-            console.log("followUpStatusButtons clicked:", btn ? btn.dataset.status : null, "activePatientId:", activePatientId);
-            if (!btn || !activePatientId) return;
+            if (!btn || btn.disabled) return;
 
-            const newStatus = btn.dataset.status;
+            selectedFollowUpStatus = btn.dataset.status;
 
-            if (newStatus === "Scheduled") {
+            followUpStatusButtons.querySelectorAll(".btn-status-toggle").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            if (selectedFollowUpStatus === "Scheduled") {
                 if (scheduleDateContainer) scheduleDateContainer.classList.remove("hidden");
-            } else {
+            } else if (selectedFollowUpStatus === "Pending") {
                 if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
                 if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
-            }
-
-            try {
-                const token = sessionStorage.getItem("token");
-                const res = await fetch(`/predict/${activePatientId}/follow-up`, {
-                    method: "PATCH",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer " + token
-                    },
-                    body: JSON.stringify({ status: newStatus, scheduled_date: null })
-                });
-                if (!res.ok) throw new Error("Failed to update status.");
-                
-                followUpStatusButtons.querySelectorAll(".btn-status-toggle").forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-                fetchPatients();
-            } catch (err) {
-                alert(`Error: ${err.message}`);
+            } else if (selectedFollowUpStatus === "Completed") {
+                // For completed, keep date container if a date is present, otherwise hide
+                if (!scheduledDateInput.value) {
+                    if (scheduleDateContainer) scheduleDateContainer.classList.add("hidden");
+                    if (scheduledDateDisplay) scheduledDateDisplay.style.display = "none";
+                }
             }
         });
     }
 
-    if (btnSaveSchedule) {
-        btnSaveSchedule.addEventListener("click", async () => {
+    if (btnSaveFollowUpStatus) {
+        btnSaveFollowUpStatus.addEventListener("click", async () => {
             if (!activePatientId) return;
-            const schedDate = scheduledDateInput.value;
-            if (!schedDate) {
-                alert("Please select a date and time for the follow-up appointment.");
-                return;
+
+            if (statusSaveFeedback) {
+                statusSaveFeedback.style.display = "none";
+                statusSaveFeedback.textContent = "";
+            }
+
+            let schedDate = null;
+            if (selectedFollowUpStatus === "Scheduled") {
+                schedDate = scheduledDateInput.value ? scheduledDateInput.value.trim() : null;
+                if (!schedDate) {
+                    if (statusSaveFeedback) {
+                        statusSaveFeedback.style.color = "#b91c1c";
+                        statusSaveFeedback.textContent = "Please select a date and time for the follow-up appointment.";
+                        statusSaveFeedback.style.display = "block";
+                    }
+                    return;
+                }
+            } else if (selectedFollowUpStatus === "Completed") {
+                schedDate = scheduledDateInput.value ? scheduledDateInput.value.trim() : null;
             }
 
             try {
+                btnSaveFollowUpStatus.disabled = true;
+                btnSaveFollowUpStatus.textContent = "Saving...";
+
                 const token = sessionStorage.getItem("token");
                 const res = await fetch(`/predict/${activePatientId}/follow-up`, {
                     method: "PATCH",
@@ -861,17 +909,40 @@ document.addEventListener("DOMContentLoaded", () => {
                         "Content-Type": "application/json",
                         "Authorization": "Bearer " + token
                     },
-                    body: JSON.stringify({ status: "Scheduled", scheduled_date: schedDate })
+                    body: JSON.stringify({ status: selectedFollowUpStatus, scheduled_date: schedDate })
                 });
-                if (!res.ok) throw new Error("Failed to save scheduled appointment.");
 
-                if (scheduledDateDisplay) {
-                    scheduledDateDisplay.textContent = `📅 Appointment: ${formatScheduledDate(schedDate)}`;
-                    scheduledDateDisplay.style.display = "block";
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Failed to update follow-up status.");
                 }
+
+                const result = await res.json();
+
+                if (statusSaveFeedback) {
+                    statusSaveFeedback.style.color = "#047857";
+                    statusSaveFeedback.textContent = "Follow-up status saved successfully!";
+                    statusSaveFeedback.style.display = "block";
+                }
+
+                if (result.scheduled_date && scheduledDateDisplay) {
+                    scheduledDateDisplay.textContent = `📅 Appointment: ${formatScheduledDate(result.scheduled_date)}`;
+                    scheduledDateDisplay.style.display = "block";
+                } else if (!result.scheduled_date && scheduledDateDisplay) {
+                    scheduledDateDisplay.style.display = "none";
+                }
+
                 fetchPatients();
+                fetchDashboardStats();
             } catch (err) {
-                alert(`Error saving schedule: ${err.message}`);
+                if (statusSaveFeedback) {
+                    statusSaveFeedback.style.color = "#b91c1c";
+                    statusSaveFeedback.textContent = `Error: ${err.message}`;
+                    statusSaveFeedback.style.display = "block";
+                }
+            } finally {
+                btnSaveFollowUpStatus.disabled = false;
+                btnSaveFollowUpStatus.textContent = "Save Status";
             }
         });
     }
@@ -1609,44 +1680,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Render follow up status buttons and bind PATCH action calls
-    function renderFollowUpStatus(currentStatus, patientId) {
-        const buttons = document.querySelectorAll("#follow-up-status-buttons .btn-status-toggle");
-        buttons.forEach(btn => {
-            const status = btn.getAttribute("data-status");
-            if (status === currentStatus) {
-                btn.classList.add("active");
-            } else {
-                btn.classList.remove("active");
-            }
-            
-            // Re-bind click event cleanly
-            btn.onclick = async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                try {
-                    const token = sessionStorage.getItem("token");
-                    const response = await fetch(`/predict/${patientId}/follow-up`, {
-                        method: "PATCH",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": "Bearer " + token
-                        },
-                        body: JSON.stringify({ status: status })
-                    });
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.detail || "Failed to update status");
-                    }
-                    renderFollowUpStatus(status, patientId);
-                    fetchDashboardStats();
-                    fetchPatients(); // refresh main patient list to show updated status tags
-                } catch (err) {
-                    alert(`Failed to update follow-up status: ${err.message}`);
-                }
-            };
-        });
-    }
 
     // ---------------------------------------------------------------------------
     // User Profile Feature (Doctor & Admin Profile Management)
