@@ -466,6 +466,9 @@
                              </div>
                              <div class="follow-up-status-section">
                                  <span class="follow-up-status-label">Clinical Follow-Up Status</span>
+                                 <div id="status-unauthorized-message" class="hidden" style="font-size: 0.85rem; color: #b91c1c; background: #fef2f2; border: 1px solid #fca5a5; padding: 0.5rem 0.75rem; border-radius: var(--border-radius-md); margin-bottom: 0.75rem;">
+                                     Only the assigned doctor or an admin can update follow-up status.
+                                 </div>
                                  <div class="follow-up-status-buttons" id="follow-up-status-buttons">
                                      <button class="btn-status-toggle" data-status="Pending">Pending</button>
                                      <button class="btn-status-toggle" data-status="Scheduled">Scheduled</button>
@@ -474,12 +477,13 @@
                                  <!-- Scheduled Date & Time Selector Container -->
                                  <div id="schedule-date-container" class="hidden" style="margin-top: 1rem; padding: 1rem; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: var(--border-radius-md);">
                                      <label for="scheduled-date-input" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 0.5rem;">Select Follow-Up Appointment Date & Time:</label>
-                                     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                                         <input type="datetime-local" id="scheduled-date-input" class="form-control" style="max-width: 250px; font-size: 0.88rem; padding: 0.4rem 0.6rem;">
-                                         <button id="btn-save-schedule" class="btn-submit" style="padding: 0.45rem 0.85rem; font-size: 0.85rem;">Save Appointment</button>
-                                     </div>
-                                     <div id="scheduled-date-display" style="font-size: 0.85rem; font-weight: 600; color: #0369a1; margin-top: 0.6rem; display: none;"></div>
+                                     <input type="datetime-local" id="scheduled-date-input" class="form-control" style="max-width: 250px; font-size: 0.88rem; padding: 0.4rem 0.6rem; margin-bottom: 0.5rem;">
+                                     <div id="scheduled-date-display" style="font-size: 0.85rem; font-weight: 600; color: #0369a1; display: none;"></div>
                                  </div>
+                                 <div style="margin-top: 1rem;">
+                                     <button id="btn-save-follow-up-status" class="btn-submit" style="padding: 0.55rem 1.25rem; font-size: 0.9rem; border: none; width: 100%;">Save Status</button>
+                                 </div>
+                                 <div id="status-save-feedback" style="font-size: 0.85rem; font-weight: 600; margin-top: 0.5rem; text-align: center; display: none;"></div>
                              </div>
                         </div>
                         

@@ -539,12 +539,37 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
         conn.commit()
 
 
+def get_patient_record(db_path: str, patient_id: str) -> Optional[dict]:
+    """Get patient basic info dictionary including assigned_doctor_id."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT patient_id, summary, name, assigned_doctor_id FROM patients WHERE patient_id = ?",
+            (patient_id,)
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
 def update_follow_up_status(db_path: str, patient_id: str, status: str, scheduled_date: Optional[str] = None) -> None:
     """Update the follow-up status and scheduled_date for a patient's prediction record."""
     with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        if status == "Pending":
+            final_date = None
+        elif status == "Completed":
+            if scheduled_date is not None:
+                final_date = scheduled_date
+            else:
+                row = conn.execute("SELECT scheduled_date FROM predictions WHERE patient_id = ?", (patient_id,)).fetchone()
+                final_date = row["scheduled_date"] if row and "scheduled_date" in row.keys() else None
+        else:  # Scheduled
+            final_date = scheduled_date
+
         conn.execute(
             "UPDATE predictions SET follow_up_status = ?, scheduled_date = ? WHERE patient_id = ?",
-            (status, scheduled_date, patient_id)
+            (status, final_date, patient_id)
         )
         conn.commit()
 

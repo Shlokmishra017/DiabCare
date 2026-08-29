@@ -46,6 +46,7 @@ from Src.database import (
     get_all_patients,
     get_cached_prediction,
     get_patient,
+    get_patient_record,
     init_db,
     save_new_patient,
     get_user_by_email,
@@ -697,31 +698,49 @@ def patch_follow_up(
             detail="Invalid status. Status must be one of 'Pending', 'Scheduled', or 'Completed'."
         )
     
+    # Authorization check: Doctor can only update status for patients assigned to them
+    user_role = current_user.get("role")
+    user_id = current_user.get("user_id")
+
+    patient_rec = get_patient_record(DB_PATH, patient_id)
+    if patient_rec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Patient '{patient_id}' not found in the database."
+        )
+
+    if user_role == "doctor":
+        assigned_doc = patient_rec.get("assigned_doctor_id")
+        if assigned_doc != user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden. Doctors can only update follow-up status for their assigned patients."
+            )
+
     scheduled_date = request.scheduled_date.strip() if request.scheduled_date and request.scheduled_date.strip() else None
     
-    # Verify patient exists
+    # Verify cached prediction exists or initialize it
     cached = get_cached_prediction(DB_PATH, patient_id)
     if cached is None:
         patient_row = get_patient(DB_PATH, patient_id)
-        if patient_row is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Patient '{patient_id}' not found in the database."
-            )
-        result = explain_patient(patient_row, pipeline=_pipeline)
-        result["patient_id"] = patient_id
-        cache_prediction(DB_PATH, patient_id, result)
+        if patient_row is not None:
+            result = explain_patient(patient_row, pipeline=_pipeline)
+            result["patient_id"] = patient_id
+            cache_prediction(DB_PATH, patient_id, result)
     
     try:
         update_follow_up_status(DB_PATH, patient_id, status, scheduled_date)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
         
+    # Get updated record to return current status and scheduled_date
+    updated_pred = get_cached_prediction(DB_PATH, patient_id)
+
     return {
         "message": "Follow-up status updated successfully.",
         "patient_id": patient_id,
-        "follow_up_status": status,
-        "scheduled_date": scheduled_date
+        "follow_up_status": updated_pred.get("follow_up_status") if updated_pred else status,
+        "scheduled_date": updated_pred.get("scheduled_date") if updated_pred else scheduled_date
     }
 
 
