@@ -13,12 +13,22 @@ Run from project root:
   # then visit http://localhost:8000/docs
 """
 
+import logging
 import os
+import re
 import sys
 import uuid
+from contextlib import asynccontextmanager
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("diabcare")
 
 # pyrefly: ignore [missing-import]
 import joblib
@@ -29,17 +39,52 @@ import jwt
 # pyrefly: ignore [missing-import]
 import bcrypt
 # pyrefly: ignore [missing-import]
-from fastapi import FastAPI, HTTPException, Depends
+import io
+# pyrefly: ignore [missing-import]
+from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File
 # pyrefly: ignore [missing-import]
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 # pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
 # pyrefly: ignore [missing-import]
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 # pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
 # pyrefly: ignore [missing-import]
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
+
+# pyrefly: ignore [missing-import]
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+from Src.Preprocessing import INT_COLS
+from Src.database import (
+    cache_prediction,
+    get_all_patients,
+    get_cached_prediction,
+    get_patient,
+    get_patient_record,
+    init_db,
+    save_new_patient,
+    get_user_by_email,
+    get_user_by_id,
+    update_user_profile,
+    save_new_user,
+    get_pending_requests,
+    get_all_doctors,
+    get_all_admins,
+    update_user_status,
+    update_follow_up_status,
+    get_dashboard_stats,
+    assign_patient_to_doctor,
+    save_refresh_token,
+    get_refresh_token,
+    delete_refresh_token,
+    save_audit_log,
+    get_patient_timeline,
+)
+from Src.explain import explain_patient
 
 from Src.database import (
     cache_prediction,
@@ -70,25 +115,65 @@ DB_PATH = "DATA/diabcare.db"
 MODEL_PATH = "DATA/lgbm_pipeline.joblib"
 
 # ---------------------------------------------------------------------------
-# App init
+# App Lifespan & State Initialization
 # ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db(DB_PATH)
+    pipeline = joblib.load(MODEL_PATH)
+    app.state.pipeline = pipeline
+    logger.info(f"DB ready: {DB_PATH}")
+    logger.info(f"Model loaded: {type(pipeline.named_steps['model']).__name__}")
+
+    # Pre-compute risk predictions for all existing patients if not already cached
+    try:
+        patients_list = get_all_patients(DB_PATH)
+        for p in patients_list:
+            patient_id = p["patient_id"]
+            if get_cached_prediction(DB_PATH, patient_id) is None:
+                logger.info(f"Pre-calculating risk for patient {patient_id}...")
+                patient_row = get_patient(DB_PATH, patient_id)
+                if patient_row is not None:
+                    result = explain_patient(patient_row, pipeline=pipeline)
+                    result["patient_id"] = patient_id
+                    cache_prediction(DB_PATH, patient_id, result)
+        logger.info("Seeded patient predictions pre-calculated.")
+    except Exception as e:
+        logger.warning(f"Failed to pre-calculate predictions on startup: {str(e)}")
+
+    yield
+
+def get_pipeline(request: Request):
+    return request.app.state.pipeline
+
+# ---------------------------------------------------------------------------
+# App init & Rate Limiter
+# ---------------------------------------------------------------------------
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="DiabCare AI",
     description="30-day hospital readmission risk predictor for diabetic patients.",
     version="0.1.0",
+    lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ---------------------------------------------------------------------------
 # Security & JWT Configuration
 # ---------------------------------------------------------------------------
-# JWT Secret Configuration: read from env variable; fallback to secure random key if not configured in production
 JWT_SECRET = os.getenv("JWT_SECRET")
+APP_ENV = os.getenv("APP_ENV", "development")
 if not JWT_SECRET:
+    if APP_ENV == "production":
+        raise RuntimeError("JWT_SECRET environment variable is MANDATORY in production mode!")
     import secrets
     JWT_SECRET = secrets.token_hex(32)
-    # Using a generated key ensures security, but invalidates active sessions across restarts if the env var isn't set.
+
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 security = HTTPBearer()
 
@@ -99,7 +184,20 @@ def create_access_token(data: dict) -> str:
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+def create_refresh_token(user_id: str) -> tuple[str, str, str]:
+    """Returns (token_id, token, expires_at_iso)"""
+    token_id = f"RT-{uuid.uuid4().hex[:12]}"
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {
+        "token_id": token_id,
+        "user_id": user_id,
+        "exp": expire,
+        "type": "refresh"
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return token_id, token, expire.isoformat()
+
+def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -107,14 +205,34 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         role: str = payload.get("role")
         if user_id is None or role is None:
             raise HTTPException(status_code=401, detail="Invalid token claims.")
+
+        # Log action in audit_logs
+        client_ip = request.client.host if request.client else "unknown"
+        action = f"{request.method} {request.url.path}"
+        save_audit_log(DB_PATH, user_id, action, request.url.path, client_ip)
+
         return {"user_id": user_id, "role": role}
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
-# CORS — allow all origins during development (frontend is a separate static app)
+def validate_password_strength(password: str) -> bool:
+    if len(password) < 8:
+        return False
+    if not re.search(r"[A-Z]", password):
+        return False
+    if not re.search(r"[a-z]", password):
+        return False
+    if not re.search(r"\d", password):
+        return False
+    return True
+
+# CORS — dynamic configuration based on ALLOWED_ORIGINS env var
+raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000")
+allowed_origins = [origin.strip() for origin in raw_allowed_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -125,37 +243,13 @@ app.add_middleware(
 def read_root() -> FileResponse:
     return FileResponse("static/index.html")
 
+@app.get("/api/config", summary="Get application configuration settings")
+def get_config() -> dict:
+    show_demo = os.getenv("SHOW_DEMO_ACCOUNTS", "true").lower() in ("true", "1", "yes")
+    return {"show_demo_accounts": show_demo}
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ---------------------------------------------------------------------------
-# Startup: init DB + load model once into memory
-# ---------------------------------------------------------------------------
-_pipeline = None
-
-
-@app.on_event("startup")
-def startup_event() -> None:
-    global _pipeline
-    init_db(DB_PATH)
-    _pipeline = joblib.load(MODEL_PATH)
-    print(f"[startup] DB ready: {DB_PATH}")
-    print(f"[startup] Model loaded: {type(_pipeline.named_steps['model']).__name__}")
-    
-    # Pre-compute risk predictions for all existing patients if not already cached
-    try:
-        patients_list = get_all_patients(DB_PATH)
-        for p in patients_list:
-            patient_id = p["patient_id"]
-            if get_cached_prediction(DB_PATH, patient_id) is None:
-                print(f"Pre-calculating risk for patient {patient_id}...")
-                patient_row = get_patient(DB_PATH, patient_id)
-                if patient_row is not None:
-                    result = explain_patient(patient_row, pipeline=_pipeline)
-                    result["patient_id"] = patient_id
-                    cache_prediction(DB_PATH, patient_id, result)
-        print("[startup] Seeded patient predictions pre-calculated.")
-    except Exception as e:
-        print(f"[Warning] Failed to pre-calculate predictions on startup: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +258,7 @@ def startup_event() -> None:
 
 class RegisterRequest(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     password: str
 
 
@@ -182,8 +276,12 @@ class PendingRequestListItem(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 class LoginUserResponse(BaseModel):
@@ -198,6 +296,7 @@ class LoginUserResponse(BaseModel):
 class LoginResponse(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: str
     user: LoginUserResponse
 
 
@@ -220,7 +319,7 @@ class UserProfileResponse(BaseModel):
 
 class CreateAdminRequest(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     password: str
 
 
@@ -338,9 +437,10 @@ class AssignPatientRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/login", response_model=LoginResponse, summary="User login")
-def login(request: LoginRequest) -> LoginResponse:
-    email = request.email.strip().lower()
-    password = request.password
+@limiter.limit("5/minute")
+def login(request: Request, body: LoginRequest) -> LoginResponse:
+    email = body.email.strip().lower()
+    password = body.password
 
     user = get_user_by_email(DB_PATH, email)
     if not user:
@@ -364,11 +464,14 @@ def login(request: LoginRequest) -> LoginResponse:
         )
 
     token_data = {"user_id": user["user_id"], "role": user["role"]}
-    token = create_access_token(token_data)
+    access_token = create_access_token(token_data)
+    rt_id, refresh_token, expires_at = create_refresh_token(user["user_id"])
+    save_refresh_token(DB_PATH, rt_id, user["user_id"], refresh_token, expires_at)
 
     return LoginResponse(
-        access_token=token,
+        access_token=access_token,
         token_type="bearer",
+        refresh_token=refresh_token,
         user=LoginUserResponse(
             user_id=user["user_id"],
             name=user["name"],
@@ -381,13 +484,20 @@ def login(request: LoginRequest) -> LoginResponse:
 
 
 @app.post("/auth/register", summary="Register as a new doctor")
-def register(request: RegisterRequest) -> dict:
-    name = request.name.strip()
-    email = request.email.strip().lower()
-    password = request.password
+@limiter.limit("5/minute")
+def register(request: Request, body: RegisterRequest) -> dict:
+    name = body.name.strip()
+    email = body.email.strip().lower()
+    password = body.password
 
     if not name or not email or not password:
         raise HTTPException(status_code=400, detail="All fields (name, email, password) are required.")
+
+    if not validate_password_strength(password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, and one number."
+        )
 
     # Check email uniqueness
     existing_user = get_user_by_email(DB_PATH, email)
@@ -409,6 +519,41 @@ def register(request: RegisterRequest) -> dict:
         raise HTTPException(status_code=500, detail=f"Database error during registration: {str(e)}")
 
     return {"message": "Access request submitted. Pending administrator approval."}
+
+
+@app.post("/auth/refresh", summary="Refresh access token")
+def refresh_token_endpoint(body: RefreshTokenRequest) -> dict:
+    token_str = body.refresh_token.strip()
+    stored_token = get_refresh_token(DB_PATH, token_str)
+    if not stored_token:
+        raise HTTPException(status_code=401, detail="Invalid or reused refresh token.")
+
+    try:
+        payload = jwt.decode(token_str, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type.")
+        user_id = payload.get("user_id")
+    except jwt.PyJWTError:
+        delete_refresh_token(DB_PATH, token_str)
+        raise HTTPException(status_code=401, detail="Expired or invalid refresh token.")
+
+    user = get_user_by_id(DB_PATH, user_id)
+    if not user or user["status"] != "approved":
+        delete_refresh_token(DB_PATH, token_str)
+        raise HTTPException(status_code=401, detail="User account inactive or not found.")
+
+    # Rotate refresh token: delete old, create new
+    delete_refresh_token(DB_PATH, token_str)
+
+    new_access_token = create_access_token({"user_id": user["user_id"], "role": user["role"]})
+    rt_id, new_refresh_token, expires_at = create_refresh_token(user["user_id"])
+    save_refresh_token(DB_PATH, rt_id, user["user_id"], new_refresh_token, expires_at)
+
+    return {
+        "access_token": new_access_token,
+        "token_type": "bearer",
+        "refresh_token": new_refresh_token
+    }
 
 
 @app.get("/admin/requests", response_model=list[PendingRequestListItem], summary="List pending doctor access requests")
@@ -541,7 +686,7 @@ def create_admin(request: CreateAdminRequest, current_user: dict = Depends(get_c
 
 
 @app.post("/predict", response_model=PredictResponse, summary="Predict 30-day readmission risk")
-def predict(request: PredictRequest, current_user: dict = Depends(get_current_user)) -> PredictResponse:
+def predict(request: PredictRequest, current_user: dict = Depends(get_current_user), pipeline = Depends(get_pipeline)) -> PredictResponse:
     """
     Given a patient_id, return:
     - risk_percent      : 0-100 float
@@ -573,7 +718,7 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
         )
 
     # 3. Run explain_patient (SHAP + LightGBM)
-    result = explain_patient(patient_row, pipeline=_pipeline)
+    result = explain_patient(patient_row, pipeline=pipeline)
     result["patient_id"] = patient_id
 
     # 4. Cache result
@@ -583,7 +728,7 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
 
 
 @app.post("/predict_new", response_model=PredictResponse, summary="Predict 30-day readmission risk for a new patient")
-def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_current_user)) -> PredictResponse:
+def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_current_user), pipeline = Depends(get_pipeline)) -> PredictResponse:
     """
     Given raw patient feature values as JSON, return prediction results:
     - risk_percent      : 0-100 float
@@ -632,13 +777,7 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
     df = pd.DataFrame([eval_dict])
 
     # Ensure numeric columns are correct dtype
-    _INT_COLS = [
-        "admission_type_id", "discharge_disposition_id", "admission_source_id",
-        "time_in_hospital", "num_lab_procedures", "num_procedures",
-        "num_medications", "number_outpatient", "number_emergency",
-        "number_inpatient", "number_diagnoses",
-    ]
-    for col in _INT_COLS:
+    for col in INT_COLS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # 4. Generate placeholder ID
@@ -646,7 +785,7 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
 
     # 5. Run explain_patient
     try:
-        result = explain_patient(df, pipeline=_pipeline)
+        result = explain_patient(df, pipeline=pipeline)
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -659,13 +798,13 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
     try:
         save_new_patient(DB_PATH, placeholder_id, patient_dict)
     except Exception as e:
-        print(f"[Warning] Failed to save new patient raw features: {str(e)}")
+        logger.warning(f"Failed to save new patient raw features: {str(e)}")
 
     # 7. Cache prediction
     try:
         cache_prediction(DB_PATH, placeholder_id, result)
     except Exception as e:
-        print(f"[Warning] Failed to cache new patient prediction: {str(e)}")
+        logger.warning(f"Failed to cache new patient prediction: {str(e)}")
 
     return PredictResponse(**result)
 
@@ -680,6 +819,15 @@ def patients(current_user: dict = Depends(get_current_user)) -> list[PatientList
     return [PatientListItem(**r) for r in rows]
 
 
+@app.get("/patients/{patient_id}/timeline", summary="Get patient readmission evaluation history timeline")
+def patient_timeline(patient_id: str, current_user: dict = Depends(get_current_user)) -> list[dict]:
+    patient_id_str = patient_id.strip()
+    patient_rec = get_patient_record(DB_PATH, patient_id_str)
+    if not patient_rec:
+        raise HTTPException(status_code=404, detail=f"Patient '{patient_id_str}' not found.")
+    return get_patient_timeline(DB_PATH, patient_id_str)
+
+
 class UpdateFollowUpRequest(BaseModel):
     status: str
     scheduled_date: str | None = None
@@ -689,7 +837,8 @@ class UpdateFollowUpRequest(BaseModel):
 def patch_follow_up(
     patient_id: str,
     request: UpdateFollowUpRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    pipeline = Depends(get_pipeline)
 ) -> dict:
     status = request.status.strip()
     if status not in ["Pending", "Scheduled", "Completed"]:
@@ -724,7 +873,7 @@ def patch_follow_up(
     if cached is None:
         patient_row = get_patient(DB_PATH, patient_id)
         if patient_row is not None:
-            result = explain_patient(patient_row, pipeline=_pipeline)
+            result = explain_patient(patient_row, pipeline=pipeline)
             result["patient_id"] = patient_id
             cache_prediction(DB_PATH, patient_id, result)
     
@@ -788,7 +937,145 @@ def dashboard_stats(current_user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=500, detail=f"Database error fetching stats: {str(e)}")
 
 
+@app.post("/predict/bulk", summary="Bulk CSV Upload Risk Screening")
+async def predict_bulk(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    pipeline = Depends(get_pipeline)
+) -> list[dict]:
+    if not file.filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a CSV file.")
+
+    contents = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CSV file format: {str(e)}")
+
+    results = []
+    for idx, row in df.iterrows():
+        row_dict = row.to_dict()
+        row_df = pd.DataFrame([row_dict])
+
+        for col in INT_COLS:
+            if col in row_df.columns:
+                row_df[col] = pd.to_numeric(row_df[col], errors="coerce")
+
+        p_id = str(row_dict.get("patient_id", f"BULK-{idx+1}"))
+        try:
+            res = explain_patient(row_df, pipeline=pipeline)
+            res["patient_id"] = p_id
+            results.append(res)
+        except Exception as e:
+            results.append({
+                "patient_id": p_id,
+                "error": str(e)
+            })
+
+    return results
+
+
+@app.get("/patients/{patient_id}/report/pdf", summary="Export patient clinical risk report as PDF")
+def export_pdf_report(
+    patient_id: str,
+    current_user: dict = Depends(get_current_user),
+    pipeline = Depends(get_pipeline)
+) -> Response:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+
+    patient_id_str = patient_id.strip()
+    patient_row = get_patient(DB_PATH, patient_id_str)
+    if patient_row is None:
+        raise HTTPException(status_code=404, detail=f"Patient '{patient_id_str}' not found.")
+
+    cached = get_cached_prediction(DB_PATH, patient_id_str)
+    if not cached:
+        cached = explain_patient(patient_row, pipeline=pipeline)
+        cached["patient_id"] = patient_id_str
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    story = []
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=20,
+        textColor=colors.HexColor('#dc2626'),
+        spaceAfter=12
+    )
+
+    story.append(Paragraph(f"DiabCare AI — Clinical Readmission Risk Report", title_style))
+    story.append(Paragraph(f"<b>Patient ID:</b> {patient_id_str}", styles['Normal']))
+    story.append(Paragraph(f"<b>Generated At:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Risk Summary
+    risk_color = '#059669' if cached['risk_category'] == 'Low' else ('#d97706' if cached['risk_category'] == 'Moderate' else '#dc2626')
+    story.append(Paragraph(f"<b>30-Day Readmission Risk:</b> {cached['risk_percent']}%", styles['Heading2']))
+    story.append(Paragraph(f"<b>Risk Category:</b> <font color='{risk_color}'><b>{cached['risk_category']}</b></font>", styles['Normal']))
+    story.append(Paragraph(f"<b>Follow-Up Priority:</b> {cached['follow_up_priority']}", styles['Normal']))
+    story.append(Paragraph(f"<b>Follow-Up Status:</b> {cached.get('follow_up_status', 'Pending')}", styles['Normal']))
+    story.append(Spacer(1, 14))
+
+    # SHAP Factors Table
+    story.append(Paragraph("<b>Top SHAP Contributing Risk Factors:</b>", styles['Heading3']))
+    table_data = [["Factor Description", "Direction", "SHAP Value"]]
+    for f in cached.get('top_factors', []):
+        table_data.append([
+            f.get('factor', ''),
+            f.get('direction', ''),
+            f"{f.get('shap_value', 0.0):.4f}"
+        ])
+
+    t = Table(table_data, colWidths=[300, 120, 80])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f1f5f9')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#0f172a')),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 20))
+
+    story.append(Paragraph("<i>Disclaimer: DiabCare AI is a prototype clinical decision-support system. It is not a medical diagnosis or clinically validated risk assessment.</i>", styles['Italic']))
+
+    doc.build(story)
+    buffer.seek(0)
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=DiabCare_Report_{patient_id_str}.pdf"}
+    )
+
+
 @app.get("/health", summary="Health check")
 def health() -> dict:
-    """Returns 200 OK with basic status — useful for Render deployment checks."""
-    return {"status": "ok", "model": type(_pipeline.named_steps["model"]).__name__}
+    """Returns 200 OK with model and risk distribution statistics."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            cursor = conn.cursor()
+            high = cursor.execute("SELECT COUNT(*) FROM predictions WHERE risk_category = 'High'").fetchone()[0]
+            mod = cursor.execute("SELECT COUNT(*) FROM predictions WHERE risk_category = 'Moderate'").fetchone()[0]
+            low = cursor.execute("SELECT COUNT(*) FROM predictions WHERE risk_category = 'Low'").fetchone()[0]
+            total = high + mod + low
+    except Exception:
+        high, mod, low, total = 0, 0, 0, 0
+
+    return {
+        "status": "ok",
+        "model": "LGBMClassifier",
+        "risk_distribution": {
+            "total_predictions": total,
+            "high_risk": high,
+            "moderate_risk": mod,
+            "low_risk": low
+        }
+    }

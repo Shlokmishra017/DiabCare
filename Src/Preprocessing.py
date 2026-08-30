@@ -21,6 +21,20 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 # (not scaled), per the README spec.
 # ---------------------------------------------------------------------------
 
+INT_COLS = [
+    "admission_type_id",
+    "discharge_disposition_id",
+    "admission_source_id",
+    "time_in_hospital",
+    "num_lab_procedures",
+    "num_procedures",
+    "num_medications",
+    "number_outpatient",
+    "number_emergency",
+    "number_inpatient",
+    "number_diagnoses",
+]
+
 NUMERIC_COLS = [
     "time_in_hospital",
     "num_lab_procedures",

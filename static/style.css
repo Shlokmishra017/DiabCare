@@ -50,6 +50,15 @@
     --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+body.dark-theme {
+    --bg-workspace: #0f172a;
+    --card-bg: #1e293b;
+    --card-border: #334155;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+}
+
 /* Reset and Base Styles */
 * {
     box-sizing: border-box;
