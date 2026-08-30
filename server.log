@@ -1,0 +1,40 @@
+INFO:     Started server process [127982]
+INFO:     Waiting for application startup.
+2026-08-30 15:37:49,886 [INFO] diabcare: DB ready: DATA/diabcare.db
+2026-08-30 15:37:49,886 [INFO] diabcare: Model loaded: LGBMClassifier
+2026-08-30 15:37:49,891 [INFO] diabcare: Seeded patient predictions pre-calculated.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:45912 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45912 - "GET /static/style.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45920 - "GET /static/js/main.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45920 - "GET /static/js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45912 - "GET /static/js/auth.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45938 - "GET /static/js/screening.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45936 - "GET /static/js/dashboard.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45936 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45936 - "GET /static/app.js?v=9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45936 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45936 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET /static/style.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38602 - "GET /static/js/main.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38602 - "GET /static/js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET /static/js/auth.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38608 - "GET /static/js/screening.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38606 - "GET /static/js/dashboard.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38606 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET /static/app.js?v=9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38598 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58736 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58736 - "GET /static/style.css?v=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58748 - "GET /static/js/main.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58748 - "GET /static/js/api.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58736 - "GET /static/js/auth.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58758 - "GET /static/js/dashboard.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58768 - "GET /static/js/screening.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58748 - "GET /static/app.js?v=9 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58758 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58758 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58758 - "GET /api/config HTTP/1.1" 200 OK

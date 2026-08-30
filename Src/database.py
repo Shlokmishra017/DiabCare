@@ -11,11 +11,12 @@ Tables:
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Generator
 # pyrefly: ignore [missing-import]
 import bcrypt
 
 import pandas as pd
+from Src.Preprocessing import INT_COLS
 
 # All 44 feature columns (matches Preprocessing.py column lists)
 _FEATURE_COLS = [
@@ -51,7 +52,8 @@ CREATE TABLE IF NOT EXISTS patients (
 
 CREATE_PREDICTIONS_SQL = """
 CREATE TABLE IF NOT EXISTS predictions (
-    patient_id          TEXT PRIMARY KEY,
+    prediction_id       TEXT PRIMARY KEY,
+    patient_id          TEXT,
     risk_percent        REAL,
     risk_category       TEXT,
     factors             TEXT,
@@ -76,21 +78,60 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """
 
+CREATE_REFRESH_TOKENS_SQL = """
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    token_id   TEXT PRIMARY KEY,
+    user_id    TEXT,
+    token      TEXT UNIQUE,
+    expires_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+"""
+
+CREATE_AUDIT_LOGS_SQL = """
+CREATE TABLE IF NOT EXISTS audit_logs (
+    log_id     TEXT PRIMARY KEY,
+    user_id    TEXT,
+    action     TEXT,
+    target     TEXT,
+    timestamp  TEXT,
+    ip_address TEXT
+);
+"""
+
+
+def get_db(db_path: str = "DATA/diabcare.db") -> Generator[sqlite3.Connection, None, None]:
+    """Yield a database connection context with sqlite3.Row row_factory."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
 
 def _seed_users(conn) -> None:
     """Seed default doctor and admin accounts if they don't exist."""
+    import os
     count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     if count == 0:
         now = datetime.now(timezone.utc).isoformat()
+
+        # Get hashed passwords from env vars or generate hash securely if plaintext is provided in env or default fallback
+        doc1_pwd = os.getenv("SEED_DOC_1_PWD", "doctor123")
+        doc2_pwd = os.getenv("SEED_DOC_2_PWD", "doctor288")
+        admin_pwd = os.getenv("SEED_ADMIN_PWD", "admin999")
+
+        doc1_hash = os.getenv("SEED_DOC_1_HASH") or bcrypt.hashpw(doc1_pwd.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        doc2_hash = os.getenv("SEED_DOC_2_HASH") or bcrypt.hashpw(doc2_pwd.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        admin_hash = os.getenv("SEED_ADMIN_HASH") or bcrypt.hashpw(admin_pwd.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
         users_data = [
-            ("U-1001", "Dr. Alice Smith", "doctor1@diabcare.ai", "doctor123", "doctor", "approved", "MD - Endocrinology (Harvard Medical School)", "REF-DOC-1001"),
-            ("U-1002", "Dr. Bob Jones", "doctor2@diabcare.ai", "doctor288", "doctor", "approved", "MBBS, MD - Diabetology (Johns Hopkins)", "REF-DOC-1002"),
-            ("U-1003", "Admin User", "admin@diabcare.ai", "admin999", "admin", "approved", "System Administrator", "REF-ADM-0001"),
+            ("U-1001", "Dr. Alice Smith", "doctor1@diabcare.ai", doc1_hash, "doctor", "approved", "MD - Endocrinology (Harvard Medical School)", "REF-DOC-1001"),
+            ("U-1002", "Dr. Bob Jones", "doctor2@diabcare.ai", doc2_hash, "doctor", "approved", "MBBS, MD - Diabetology (Johns Hopkins)", "REF-DOC-1002"),
+            ("U-1003", "Admin User", "admin@diabcare.ai", admin_hash, "admin", "approved", "System Administrator", "REF-ADM-0001"),
         ]
-        for uid, name, email, pwd, role, status, edu, ref in users_data:
-            pwd_bytes = pwd.encode('utf-8')
-            salt = bcrypt.gensalt()
-            pwd_hash = bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
+        for uid, name, email, pwd_hash, role, status, edu, ref in users_data:
             conn.execute(
                 "INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (uid, name, email, pwd_hash, role, status, edu, ref, now)
@@ -130,7 +171,21 @@ def init_db(db_path: str) -> None:
         conn.execute(CREATE_PATIENTS_SQL)
         conn.execute(CREATE_PREDICTIONS_SQL)
         conn.execute(CREATE_USERS_SQL)
+        conn.execute(CREATE_REFRESH_TOKENS_SQL)
+        conn.execute(CREATE_AUDIT_LOGS_SQL)
         conn.commit()
+
+        # Migrate predictions table if prediction_id column is missing
+        try:
+            pred_info = cursor.execute("PRAGMA table_info(predictions)").fetchall()
+            if pred_info:
+                pred_cols = [col[1] for col in pred_info]
+                if "prediction_id" not in pred_cols:
+                    conn.execute("ALTER TABLE predictions ADD COLUMN prediction_id TEXT")
+                    conn.execute("UPDATE predictions SET prediction_id = 'PRED-' || patient_id WHERE prediction_id IS NULL")
+                    conn.commit()
+        except Exception as e:
+            print(f"[Warning] Predictions table prediction_id migration failed: {str(e)}")
 
         # Check if patients table needs assigned_doctor_id column migration
         try:
@@ -280,6 +335,35 @@ def update_user_status(db_path: str, user_id: str, status: str) -> None:
         conn.commit()
 
 
+def save_refresh_token(db_path: str, token_id: str, user_id: str, token: str, expires_at: str) -> None:
+    """Store a refresh token in the database."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO refresh_tokens (token_id, user_id, token, expires_at) VALUES (?, ?, ?, ?)",
+            (token_id, user_id, token, expires_at)
+        )
+        conn.commit()
+
+
+def get_refresh_token(db_path: str, token: str) -> Optional[dict]:
+    """Retrieve refresh token record from database."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM refresh_tokens WHERE token = ?", (token,)
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def delete_refresh_token(db_path: str, token: str) -> None:
+    """Delete a refresh token from database to prevent re-use."""
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM refresh_tokens WHERE token = ?", (token,))
+        conn.commit()
+
+
 
 def _build_summary(row: pd.Series) -> str:
     """Build a human-readable one-line patient summary for the /patients endpoint."""
@@ -414,14 +498,8 @@ def get_patient(db_path: str, patient_id: str) -> Optional[pd.DataFrame]:
     record = {col: row[col] for col in _FEATURE_COLS}
     df = pd.DataFrame([record])
 
-    # Restore numeric columns to their correct dtypes
-    _INT_COLS = [
-        "admission_type_id", "discharge_disposition_id", "admission_source_id",
-        "time_in_hospital", "num_lab_procedures", "num_procedures",
-        "num_medications", "number_outpatient", "number_emergency",
-        "number_inpatient", "number_diagnoses",
-    ]
-    for col in _INT_COLS:
+    # Restore numeric columns to their correct dtypes using single source of truth INT_COLS
+    for col in INT_COLS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df
@@ -466,17 +544,16 @@ def get_all_patients(db_path: str) -> list[dict]:
 
 
 def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
-    """Return cached prediction if exists, else None."""
+    """Return latest cached prediction if exists, else None."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT * FROM predictions WHERE patient_id = ?", (patient_id,)
+            "SELECT * FROM predictions WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1", (patient_id,)
         ).fetchone()
 
     if row is None:
         return None
 
-    # Retrieve follow_up_status and scheduled_date
     follow_up_status = "Pending"
     scheduled_date = None
     try:
@@ -489,25 +566,52 @@ def get_cached_prediction(db_path: str, patient_id: str) -> Optional[dict]:
 
     return {
         "patient_id": row["patient_id"],
+        "prediction_id": row["prediction_id"] if "prediction_id" in row.keys() else f"PRED-{patient_id}",
         "risk_percent": row["risk_percent"],
         "risk_category": row["risk_category"],
         "top_factors": json.loads(row["factors"]),
         "follow_up_priority": row["follow_up_priority"],
+        "created_at": row["created_at"] if "created_at" in row.keys() else None,
         "follow_up_status": follow_up_status,
         "scheduled_date": scheduled_date,
     }
 
 
+def get_patient_timeline(db_path: str, patient_id: str) -> list[dict]:
+    """Return all historical risk records for a patient sorted by created_at DESC."""
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM predictions WHERE patient_id = ? ORDER BY created_at DESC", (patient_id,)
+        ).fetchall()
+
+    results = []
+    for row in rows:
+        results.append({
+            "patient_id": row["patient_id"],
+            "prediction_id": row["prediction_id"] if "prediction_id" in row.keys() else f"PRED-{patient_id}",
+            "risk_percent": row["risk_percent"],
+            "risk_category": row["risk_category"],
+            "top_factors": json.loads(row["factors"]),
+            "follow_up_priority": row["follow_up_priority"],
+            "created_at": row["created_at"] if "created_at" in row.keys() else None,
+            "follow_up_status": row["follow_up_status"] if "follow_up_status" in row.keys() else "Pending",
+            "scheduled_date": row["scheduled_date"] if "scheduled_date" in row.keys() else None,
+        })
+    return results
+
+
 def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
-    """Persist a prediction result so repeated calls skip SHAP re-computation."""
+    """Persist a prediction result record into predictions timeline."""
+    import uuid
     now = datetime.now(timezone.utc).isoformat()
+    prediction_id = f"PRED-{uuid.uuid4().hex[:8].upper()}"
     
-    # Check if we already have status/scheduled_date in DB to preserve them
     existing_status = "Pending"
     existing_scheduled_date = None
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT follow_up_status, scheduled_date FROM predictions WHERE patient_id = ?", (patient_id,)).fetchone()
+        row = conn.execute("SELECT follow_up_status, scheduled_date FROM predictions WHERE patient_id = ? ORDER BY created_at DESC LIMIT 1", (patient_id,)).fetchone()
         if row is not None:
             try:
                 if "follow_up_status" in row.keys() and row["follow_up_status"] is not None:
@@ -522,10 +626,11 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
 
     with sqlite3.connect(db_path) as conn:
         conn.execute(
-            """INSERT OR REPLACE INTO predictions
-               (patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at, follow_up_status, scheduled_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO predictions
+               (prediction_id, patient_id, risk_percent, risk_category, factors, follow_up_priority, created_at, follow_up_status, scheduled_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
+                prediction_id,
                 patient_id,
                 result["risk_percent"],
                 result["risk_category"],
@@ -535,6 +640,19 @@ def cache_prediction(db_path: str, patient_id: str, result: dict) -> None:
                 follow_up_status,
                 scheduled_date,
             ),
+        )
+        conn.commit()
+
+
+def save_audit_log(db_path: str, user_id: str, action: str, target: str, ip_address: str) -> None:
+    """Record an access log event in audit_logs."""
+    import uuid
+    log_id = f"LOG-{uuid.uuid4().hex[:8].upper()}"
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO audit_logs (log_id, user_id, action, target, timestamp, ip_address) VALUES (?, ?, ?, ?, ?, ?)",
+            (log_id, user_id, action, target, now, ip_address)
         )
         conn.commit()
 
