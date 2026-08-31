@@ -697,6 +697,11 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
     Results are cached in SQLite — repeated calls for the same patient_id
     skip SHAP re-computation.
     """
+    if current_user["role"] == "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Patients cannot run predictions."
+        )
     patient_id = request.patient_id.strip()
     if not patient_id:
         raise HTTPException(
@@ -738,6 +743,11 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
 
     Results are cached in predictions table under a generated placeholder patient ID.
     """
+    if current_user["role"] == "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Patients cannot run predictions."
+        )
     # 1. Server-side validation
     errors = []
 
@@ -815,6 +825,11 @@ def patients(current_user: dict = Depends(get_current_user)) -> list[PatientList
     Return all patient IDs and their one-line summaries.
     Used by the frontend to populate the search / dropdown.
     """
+    if current_user["role"] == "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Patients cannot view the patient directory."
+        )
     rows = get_all_patients(DB_PATH)
     return [PatientListItem(**r) for r in rows]
 
@@ -822,6 +837,13 @@ def patients(current_user: dict = Depends(get_current_user)) -> list[PatientList
 @app.get("/patients/{patient_id}/timeline", summary="Get patient readmission evaluation history timeline")
 def patient_timeline(patient_id: str, current_user: dict = Depends(get_current_user)) -> list[dict]:
     patient_id_str = patient_id.strip()
+    if current_user["role"] == "patient":
+        logged_in_user = get_user_by_id(DB_PATH, current_user["user_id"])
+        if not logged_in_user or logged_in_user.get("reference_id") != patient_id_str:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden. Patients can only view their own history timeline."
+            )
     patient_rec = get_patient_record(DB_PATH, patient_id_str)
     if not patient_rec:
         raise HTTPException(status_code=404, detail=f"Patient '{patient_id_str}' not found.")
@@ -937,12 +959,76 @@ def dashboard_stats(current_user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=500, detail=f"Database error fetching stats: {str(e)}")
 
 
+@app.get("/api/patient/dashboard", summary="Get patient dashboard details (Patient only)")
+def patient_dashboard(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user["role"] != "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Only patients can access the patient dashboard."
+        )
+    
+    user_id = current_user["user_id"]
+    user = get_user_by_id(DB_PATH, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+        
+    patient_id = user.get("reference_id")
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="User is not linked to any patient record.")
+        
+    patient_rec = get_patient_record(DB_PATH, patient_id)
+    if not patient_rec:
+        raise HTTPException(status_code=404, detail=f"Patient record '{patient_id}' not found.")
+        
+    # Get doctor details
+    doc_id = patient_rec.get("assigned_doctor_id")
+    doc_info = None
+    if doc_id:
+        doc_user = get_user_by_id(DB_PATH, doc_id)
+        if doc_user:
+            doc_info = {
+                "name": doc_user["name"],
+                "email": doc_user["email"],
+                "education": doc_user.get("education"),
+                "reference_id": doc_user.get("reference_id")
+            }
+            
+    # Get latest cached prediction
+    latest_pred = get_cached_prediction(DB_PATH, patient_id)
+    
+    # Get appointment details from prediction
+    appt_info = None
+    if latest_pred:
+        appt_info = {
+            "status": latest_pred.get("follow_up_status", "Pending"),
+            "scheduled_date": latest_pred.get("scheduled_date")
+        }
+    else:
+        appt_info = {
+            "status": "Pending",
+            "scheduled_date": None
+        }
+        
+    return {
+        "patient_id": patient_id,
+        "name": user["name"],
+        "assigned_doctor": doc_info,
+        "appointment": appt_info,
+        "latest_prediction": latest_pred
+    }
+
+
 @app.post("/predict/bulk", summary="Bulk CSV Upload Risk Screening")
 async def predict_bulk(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
     pipeline = Depends(get_pipeline)
 ) -> list[dict]:
+    if current_user["role"] == "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden. Patients cannot run bulk predictions."
+        )
     if not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV file.")
 
@@ -987,6 +1073,13 @@ def export_pdf_report(
     from reportlab.lib import colors
 
     patient_id_str = patient_id.strip()
+    if current_user["role"] == "patient":
+        logged_in_user = get_user_by_id(DB_PATH, current_user["user_id"])
+        if not logged_in_user or logged_in_user.get("reference_id") != patient_id_str:
+            raise HTTPException(
+                status_code=403,
+                detail="Forbidden. Patients can only export their own PDF report."
+            )
     patient_row = get_patient(DB_PATH, patient_id_str)
     if patient_row is None:
         raise HTTPException(status_code=404, detail=f"Patient '{patient_id_str}' not found.")

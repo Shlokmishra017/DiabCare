@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS users (
     name          TEXT,
     email         TEXT UNIQUE,
     password_hash TEXT,
-    role          TEXT CHECK(role IN ('doctor','admin')),
+    role          TEXT CHECK(role IN ('doctor','admin','patient')),
     status        TEXT CHECK(status IN ('pending', 'approved', 'rejected')) DEFAULT 'approved',
     education     TEXT,
     reference_id  TEXT,
@@ -111,12 +111,11 @@ def get_db(db_path: str = "DATA/diabcare.db") -> Generator[sqlite3.Connection, N
 
 
 def _seed_users(conn) -> None:
-    """Seed default doctor and admin accounts if they don't exist."""
+    """Seed default doctor, admin and patient accounts if they don't exist."""
     import os
     count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    now = datetime.now(timezone.utc).isoformat()
     if count == 0:
-        now = datetime.now(timezone.utc).isoformat()
-
         # Get hashed passwords from env vars or generate hash securely if plaintext is provided in env or default fallback
         doc1_pwd = os.getenv("SEED_DOC_1_PWD", "doctor123")
         doc2_pwd = os.getenv("SEED_DOC_2_PWD", "doctor288")
@@ -144,6 +143,26 @@ def _seed_users(conn) -> None:
         conn.execute("UPDATE users SET education = 'System Administrator', reference_id = 'REF-ADM-0001' WHERE user_id = 'U-1003' AND (education IS NULL OR reference_id IS NULL)")
         conn.commit()
 
+    # Seed patient demo accounts if they do not exist
+    has_patient1 = conn.execute("SELECT COUNT(*) FROM users WHERE user_id = 'U-2001'").fetchone()[0]
+    if has_patient1 == 0:
+        patient1_pwd = os.getenv("SEED_PATIENT_1_PWD", "patient123")
+        patient1_hash = os.getenv("SEED_PATIENT_1_HASH") or bcrypt.hashpw(patient1_pwd.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        conn.execute(
+            "INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("U-2001", "David Miller", "patient1@diabcare.ai", patient1_hash, "patient", "approved", None, "2552952", now)
+        )
+
+    has_patient2 = conn.execute("SELECT COUNT(*) FROM users WHERE user_id = 'U-2002'").fetchone()[0]
+    if has_patient2 == 0:
+        patient2_pwd = os.getenv("SEED_PATIENT_2_PWD", "patient123")
+        patient2_hash = os.getenv("SEED_PATIENT_2_HASH") or bcrypt.hashpw(patient2_pwd.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        conn.execute(
+            "INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("U-2002", "Jane Smith", "patient2@diabcare.ai", patient2_hash, "patient", "approved", None, "149190", now)
+        )
+    conn.commit()
+
 
 def init_db(db_path: str) -> None:
     """Create tables if they don't exist."""
@@ -164,6 +183,21 @@ def init_db(db_path: str) -> None:
                     if "reference_id" not in col_names:
                         conn.execute("ALTER TABLE users ADD COLUMN reference_id TEXT")
                         print("[Migration] Added reference_id column to users table.")
+                    
+                    # Check if users table needs to be migrated to support 'patient' role constraint
+                    users_table_info = cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+                    if users_table_info:
+                        sql_text = users_table_info[0]
+                        if "'patient'" not in sql_text and '"patient"' not in sql_text:
+                            print("[Migration] Migrating users table to support 'patient' role CHECK constraint...")
+                            cursor.execute("ALTER TABLE users RENAME TO users_old")
+                            cursor.execute(CREATE_USERS_SQL)
+                            cursor.execute("""
+                                INSERT INTO users (user_id, name, email, password_hash, role, status, education, reference_id, created_at)
+                                SELECT user_id, name, email, password_hash, role, status, education, reference_id, created_at FROM users_old
+                            """)
+                            cursor.execute("DROP TABLE users_old")
+                            print("[Migration] users table migrated successfully.")
                     conn.commit()
         except Exception as e:
             print(f"[Warning] Migration check failed: {str(e)}")

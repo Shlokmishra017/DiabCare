@@ -5,7 +5,7 @@
  * SPA transitions, gauge animations, and SHAP cards.
  */
 
-document.addEventListener("DOMContentLoaded", () => {
+const initApp = () => {
     
     // Mapped Clinical Identities for seeded patient IDs matching the mockup screenshots
     const PATIENT_MAPPING = {
@@ -32,6 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const profileView = document.getElementById("profile-view");
     const doctorsView = document.getElementById("doctors-view");
     const adminsView = document.getElementById("admins-view");
+    const menuPatientDashboard = document.getElementById("menu-patient-dashboard");
+    const patientDashboardView = document.getElementById("patient-dashboard-view");
     
     // Login Screen Elements
     const loginView = document.getElementById("login-view");
@@ -162,6 +164,34 @@ document.addEventListener("DOMContentLoaded", () => {
     // Local Data Store
     let allPatientsCached = [];
     let activePatientFeatures = null;
+    let pendingPatientRouteId = null;
+    let isApplyingRoute = false;
+
+    const ROUTES = {
+        login: "/login",
+        register: "/register",
+        patients: "/dashboard",
+        newPatient: "/screening/new",
+        profile: "/profile",
+        doctors: "/doctors",
+        requests: "/requests",
+        admins: "/admins",
+        patientDashboard: "/patient/dashboard"
+    };
+
+    function normalizePath(pathname) {
+        return pathname.replace(/\/+$/, "") || "/";
+    }
+
+    function setRoute(path, replace = false) {
+        if ((isApplyingRoute && !replace) || normalizePath(window.location.pathname) === path) return;
+        const state = { path };
+        if (replace) {
+            window.history.replaceState(state, "", path);
+        } else {
+            window.history.pushState(state, "", path);
+        }
+    }
 
     // Helper: Parse Patient Summary
     function parsePatientSummary(summary) {
@@ -343,6 +373,11 @@ document.addEventListener("DOMContentLoaded", () => {
             patientListLoading.classList.add("hidden");
             renderPatientTable();
             fetchDashboardStats(); // update dashboard summary statistics
+            if (pendingPatientRouteId) {
+                const routePatientId = pendingPatientRouteId;
+                pendingPatientRouteId = null;
+                openPatientFromRoute(routePatientId);
+            }
         } catch (error) {
             console.error("Error loading patient table listing:", error);
             patientListLoading.innerHTML = `<span style="color: var(--high-color);">Failed to load clinical profiles. Is server running?</span>`;
@@ -591,6 +626,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function openPatientScreening(patientId, uiId, ageGroup, gender, lastEncounter) {
         console.log("openPatientScreening called, patientId:", patientId);
         activePatientId = patientId;
+        setRoute(`/patients/${encodeURIComponent(patientId)}`);
         // Toggle view
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -973,6 +1009,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 5. SPA Navigation Helpers
     function showOverview() {
+        setRoute(ROUTES.patients);
         detailView.classList.add("hidden");
         newPatientView.classList.add("hidden");
         requestsView.classList.add("hidden");
@@ -997,6 +1034,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function showNewPatientForm() {
+        setRoute(ROUTES.newPatient);
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         requestsView.classList.add("hidden");
@@ -1018,6 +1056,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function showRequestsView() {
+        setRoute(ROUTES.requests);
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -1037,6 +1076,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function showProfileView() {
+        setRoute(ROUTES.profile);
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -1056,6 +1096,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function showDoctorsView() {
+        setRoute(ROUTES.doctors);
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -1075,6 +1116,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function showAdminsView() {
+        setRoute(ROUTES.admins);
         detailView.classList.add("hidden");
         overviewView.classList.add("hidden");
         newPatientView.classList.add("hidden");
@@ -1093,6 +1135,274 @@ document.addEventListener("DOMContentLoaded", () => {
         fetchAdminsList();
     }
 
+    async function showPatientDashboard() {
+        setRoute(ROUTES.patientDashboard);
+        detailView.classList.add("hidden");
+        overviewView.classList.add("hidden");
+        newPatientView.classList.add("hidden");
+        requestsView.classList.add("hidden");
+        profileView.classList.add("hidden");
+        doctorsView.classList.add("hidden");
+        adminsView.classList.add("hidden");
+        
+        if (patientDashboardView) patientDashboardView.classList.remove("hidden");
+
+        sidebarOverview.classList.remove("active");
+        sidebarPatients.classList.remove("active");
+        menuRequests.classList.remove("active");
+        menuProfile.classList.remove("active");
+        menuDoctors.classList.remove("active");
+        menuAdmins.classList.remove("active");
+        if (menuPatientDashboard) {
+            menuPatientDashboard.classList.add("active");
+            menuPatientDashboard.classList.remove("hidden");
+        }
+
+        try {
+            const token = sessionStorage.getItem("token");
+            const response = await fetch("/api/patient/dashboard", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            if (response.status === 401) {
+                handleLogout("Session expired. Please log in again.");
+                return;
+            }
+            if (!response.ok) {
+                throw new Error("Failed to load patient dashboard.");
+            }
+            const data = await response.json();
+            renderPatientDashboard(data);
+        } catch (err) {
+            console.error("Error loading patient dashboard:", err);
+            const statusDiv = document.getElementById("patient-appointment-status");
+            if (statusDiv) {
+                statusDiv.innerHTML = `<span style="color: var(--high-color);">Failed to load dashboard data. Please try again later.</span>`;
+            }
+        }
+    }
+
+    function renderPatientDashboard(data) {
+        const statusDiv = document.getElementById("patient-appointment-status");
+        const docInfoDiv = document.getElementById("patient-doctor-info");
+        const riskSummaryDiv = document.getElementById("patient-risk-summary");
+        
+        const appt = data.appointment;
+        if (!appt) {
+            statusDiv.innerHTML = `
+                <div style="background: #fef3c7; border: 1px solid #fcd34d; color: #92400e; padding: 1rem; border-radius: var(--border-radius-md); font-weight: 500;">
+                    No follow-up appointments scheduled.
+                </div>
+            `;
+        } else {
+            let statusBanner = "";
+            if (appt.status === "Scheduled" && appt.scheduled_date) {
+                statusBanner = `
+                    <div style="background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 1.25rem; border-radius: var(--border-radius-md); font-weight: 500; display: flex; flex-direction: column; gap: 0.5rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                        <span style="font-size: 1.15rem; font-weight: 700; color: #047857; display: flex; align-items: center; gap: 0.5rem;">
+                            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#10b981;"></span>
+                            Appointment Scheduled
+                        </span>
+                        <span style="font-size: 1rem; margin-top: 0.25rem;">
+                            📅 <strong>Date:</strong> ${formatScheduledDate(appt.scheduled_date)}
+                        </span>
+                        <span style="font-size: 0.88rem; color: #065f46; opacity: 0.9;">
+                            Please arrive 15 minutes before your scheduled time. If you need to reschedule, please contact your care team.
+                        </span>
+                    </div>
+                `;
+            } else if (appt.status === "Completed") {
+                statusBanner = `
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 1.25rem; border-radius: var(--border-radius-md); font-weight: 500; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="font-size: 1.1rem; font-weight: 700;">Appointment Completed</span>
+                        <span>Your follow-up appointment was marked as completed. Thank you for visiting!</span>
+                    </div>
+                `;
+            } else {
+                statusBanner = `
+                    <div style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 1.25rem; border-radius: var(--border-radius-md); font-weight: 500; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <span style="font-size: 1.1rem; font-weight: 700; color: #1d4ed8;">Follow-up Scheduling Pending</span>
+                        <span>Our medical coordination team is currently scheduling your follow-up appointment. We will update you as soon as the date is confirmed.</span>
+                    </div>
+                `;
+            }
+            statusDiv.innerHTML = statusBanner;
+        }
+        
+        const doc = data.assigned_doctor;
+        if (!doc) {
+            docInfoDiv.innerHTML = `
+                <div style="color: var(--text-secondary); font-style: italic;">
+                    No doctor is currently assigned to your care.
+                </div>
+            `;
+        } else {
+            docInfoDiv.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <div style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary);">${doc.name}</div>
+                    <div style="font-size: 0.9rem; color: var(--text-secondary); background: #f8fafc; border: 1px solid #cbd5e1; padding: 0.75rem 1rem; border-radius: var(--border-radius-md); line-height: 1.5;">
+                        • <strong>Specialty/Qualifications:</strong> ${doc.education || "MD - endocrinology"}<br>
+                        • <strong>Contact Email:</strong> ${doc.email}<br>
+                        • <strong>Medical Registry ID:</strong> <code>${doc.reference_id || "N/A"}</code>
+                    </div>
+                </div>
+            `;
+        }
+        
+        const pred = data.latest_prediction;
+        if (!pred) {
+            riskSummaryDiv.innerHTML = `
+                <p style="color: var(--text-secondary); font-style: italic;">No historical risk screening is recorded for your profile.</p>
+            `;
+        } else {
+            const risk_percent = pred.risk_percent;
+            const risk_category = pred.risk_category;
+            
+            let progressColor = "var(--low-color)";
+            if (risk_category === "Moderate") progressColor = "var(--mod-color)";
+            if (risk_category === "High") progressColor = "var(--high-color)";
+            
+            let factorsHtml = "";
+            if (pred.top_factors && pred.top_factors.length) {
+                factorsHtml = `
+                    <div style="margin-top: 1rem;">
+                        <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">Key factors from your stay that are being monitored:</h4>
+                        <ul style="margin: 0; padding-left: 1.25rem; font-size: 0.88rem; color: var(--text-secondary); display: flex; flex-direction: column; gap: 0.4rem;">
+                            ${pred.top_factors.map(f => `<li>${f.factor}</li>`).join("")}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            riskSummaryDiv.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div>
+                        Your care team uses our readmission risk system to design a post-discharge care plan tailored for you.
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 1.5rem; background: #f8fafc; border: 1px solid #cbd5e1; padding: 1.25rem; border-radius: var(--border-radius-md);">
+                        <div style="text-align: center; border-right: 1px solid #cbd5e1; padding-right: 1.5rem; min-width: 100px;">
+                            <span style="font-size: 2.2rem; font-weight: 800; color: ${progressColor}; display: block;">${Math.round(risk_percent)}%</span>
+                            <span style="font-size: 0.78rem; font-weight: 700; color: ${progressColor}; text-transform: uppercase;">${risk_category} Risk</span>
+                        </div>
+                        <div style="flex: 1; font-size: 0.88rem; line-height: 1.5; color: var(--text-secondary);">
+                            This screening helps us coordinate your follow-up check-in. It was generated using features from your last hospital stay, such as glucose tests, length of stay, and medication updates.
+                            ${factorsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    function showLoginView(path = ROUTES.login, warningMessage = "") {
+        setRoute(path, true);
+        appLayout.classList.add("hidden");
+        loginView.classList.remove("hidden");
+
+        if (path === ROUTES.register) {
+            loginSection.classList.add("hidden");
+            registerSection.classList.remove("hidden");
+        } else {
+            registerSection.classList.add("hidden");
+            loginSection.classList.remove("hidden");
+        }
+
+        if (warningMessage) {
+            loginErrorBanner.textContent = warningMessage;
+            loginErrorBanner.style.display = "block";
+        }
+    }
+
+    function openPatientFromRoute(patientId) {
+        const patient = allPatientsCached.find(p => p.patient_id === patientId);
+        if (!patient) {
+            showOverview();
+            return;
+        }
+
+        let uiId = `P-${patient.patient_id}`;
+        let ageGroup = "70-80";
+        let gender = "Female";
+        let lastEncounter = "Just Screened";
+
+        if (PATIENT_MAPPING[patient.patient_id]) {
+            const mapped = PATIENT_MAPPING[patient.patient_id];
+            uiId = mapped.uiId;
+            ageGroup = mapped.ageGroup;
+            gender = mapped.gender;
+            lastEncounter = mapped.lastEncounter;
+        } else {
+            const parsed = parsePatientSummary(patient.summary);
+            if (parsed.gender) gender = parsed.gender;
+            if (parsed.age) ageGroup = parsed.age;
+        }
+
+        openPatientScreening(patient.patient_id, uiId, ageGroup, gender, lastEncounter);
+    }
+
+    function applyCurrentRoute() {
+        const user = JSON.parse(sessionStorage.getItem("user") || "null");
+        const path = normalizePath(window.location.pathname);
+
+        isApplyingRoute = true;
+        try {
+            if (!user) {
+                showLoginView(path === ROUTES.register ? ROUTES.register : ROUTES.login);
+                return;
+            }
+
+            if (user.role === "patient") {
+                showPatientDashboard();
+                if (path !== ROUTES.patientDashboard) {
+                    setRoute(ROUTES.patientDashboard, true);
+                }
+                return;
+            }
+
+            if (path === "/" || path === ROUTES.login || path === ROUTES.register) {
+                showOverview();
+                setRoute(ROUTES.patients, true);
+                return;
+            }
+
+            if (path === ROUTES.profile) {
+                showProfileView();
+                return;
+            }
+            if (path === ROUTES.newPatient) {
+                showNewPatientForm();
+                return;
+            }
+            if (path === ROUTES.requests && user.role === "admin") {
+                showRequestsView();
+                return;
+            }
+            if (path === ROUTES.doctors && user.role === "admin") {
+                showDoctorsView();
+                return;
+            }
+            if (path === ROUTES.admins && user.role === "admin") {
+                showAdminsView();
+                return;
+            }
+
+            const patientMatch = path.match(/^\/patients\/([^/]+)$/);
+            if (patientMatch) {
+                const patientId = decodeURIComponent(patientMatch[1]);
+                if (allPatientsCached.length) {
+                    openPatientFromRoute(patientId);
+                } else {
+                    pendingPatientRouteId = patientId;
+                }
+                return;
+            }
+
+            showOverview();
+            setRoute(ROUTES.patients, true);
+        } finally {
+            isApplyingRoute = false;
+        }
+    }
+
     // Bind Navigation Back
     backLink.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1108,6 +1418,13 @@ document.addEventListener("DOMContentLoaded", () => {
         e.preventDefault();
         alert("DiabCare AI Readmission Predictor prototype system.\nExpected Baseline Performance: AUC 0.65-0.69.");
     });
+
+    if (menuPatientDashboard) {
+        menuPatientDashboard.addEventListener("click", (e) => {
+            e.preventDefault();
+            showPatientDashboard();
+        });
+    }
 
     menuRequests.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1303,6 +1620,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const predictionResult = await response.json();
             activePatientId = predictionResult.patient_id;
+            setRoute(`/patients/${encodeURIComponent(predictionResult.patient_id)}`, true);
 
             // Cache raw features so the SHAP expander has access to them
             activePatientFeatures = payload;
@@ -1321,6 +1639,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         } catch (error) {
             console.error("New Patient prediction failed:", error);
+            setRoute(ROUTES.newPatient, true);
             detailView.classList.add("hidden");
             newPatientView.classList.remove("hidden");
             formErrorBanner.innerHTML = `Error running prediction: ${error.message}`;
@@ -1343,8 +1662,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const user = JSON.parse(sessionStorage.getItem("user") || "null");
         
         if (!token || !user) {
-            appLayout.classList.add("hidden");
-            loginView.classList.remove("hidden");
+            showLoginView(
+                normalizePath(window.location.pathname) === ROUTES.register ? ROUTES.register : ROUTES.login
+            );
             return;
         }
         
@@ -1361,23 +1681,45 @@ document.addEventListener("DOMContentLoaded", () => {
             menuRequests.classList.remove("hidden");
             menuDoctors.classList.remove("hidden");
             menuAdmins.classList.remove("hidden");
+            sidebarOverview.classList.remove("hidden");
+            sidebarPatients.classList.remove("hidden");
             if (patientFilterTabs) patientFilterTabs.classList.add("hidden");
             if (adminDoctorFilter) adminDoctorFilter.classList.remove("hidden");
+            if (menuPatientDashboard) menuPatientDashboard.classList.add("hidden");
             fetchDoctorsList();
-        } else {
+        } else if (user.role === "doctor") {
             menuRequests.classList.add("hidden");
             menuDoctors.classList.add("hidden");
             menuAdmins.classList.add("hidden");
+            sidebarOverview.classList.remove("hidden");
+            sidebarPatients.classList.remove("hidden");
             if (patientFilterTabs) patientFilterTabs.classList.remove("hidden");
             if (adminDoctorFilter) adminDoctorFilter.classList.add("hidden");
+            if (menuPatientDashboard) menuPatientDashboard.classList.add("hidden");
+        } else if (user.role === "patient") {
+            menuRequests.classList.add("hidden");
+            menuDoctors.classList.add("hidden");
+            menuAdmins.classList.add("hidden");
+            sidebarOverview.classList.add("hidden");
+            sidebarPatients.classList.add("hidden");
+            if (patientFilterTabs) patientFilterTabs.classList.add("hidden");
+            if (adminDoctorFilter) adminDoctorFilter.classList.add("hidden");
+            if (menuPatientDashboard) {
+                menuPatientDashboard.classList.remove("hidden");
+                menuPatientDashboard.classList.add("active");
+            }
         }
         
-        // Trigger patient list load
-        fetchPatients();
+        // Trigger patient list load (skip for patient role to avoid 403)
+        if (user.role !== "patient") {
+            fetchPatients();
+        }
+        applyCurrentRoute();
     }
 
     function handleLogout(warningMessage) {
         sessionStorage.removeItem("token");
+        sessionStorage.removeItem("refresh_token");
         sessionStorage.removeItem("user");
         
         loginEmail.value = "";
@@ -1391,12 +1733,13 @@ document.addEventListener("DOMContentLoaded", () => {
             loginErrorBanner.style.display = "none";
         }
         
-        checkSession();
+        showLoginView(ROUTES.login, warningMessage);
     }
 
     // Toggle Login / Register Views
     linkShowRegister.addEventListener("click", (e) => {
         e.preventDefault();
+        setRoute(ROUTES.register);
         loginSection.classList.add("hidden");
         registerSection.classList.remove("hidden");
         
@@ -1411,6 +1754,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     linkShowLogin.addEventListener("click", (e) => {
         e.preventDefault();
+        setRoute(ROUTES.login);
         registerSection.classList.add("hidden");
         loginSection.classList.remove("hidden");
         
@@ -1498,8 +1842,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const result = await response.json();
             sessionStorage.setItem("token", result.access_token);
+            sessionStorage.setItem("refresh_token", result.refresh_token);
             sessionStorage.setItem("user", JSON.stringify(result.user));
 
+            if ([ROUTES.login, ROUTES.register, "/"].includes(normalizePath(window.location.pathname))) {
+                setRoute(ROUTES.patients, true);
+            }
             checkSession();
         } catch (error) {
             loginErrorBanner.textContent = error.message;
@@ -1997,6 +2345,14 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    window.addEventListener("popstate", applyCurrentRoute);
+
     // Run Initial Data/Authentication Check
     checkSession();
-});
+};
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initApp);
+} else {
+    initApp();
+}

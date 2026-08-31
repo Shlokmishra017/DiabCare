@@ -72,7 +72,8 @@
             <div class="login-demo-accounts">
                 <strong>Demo Accounts:</strong><br>
                 • Doctor: <code>doctor1@diabcare.ai</code> / <code>doctor123</code><br>
-                • Admin: <code>admin@diabcare.ai</code> / <code>admin999</code>
+                • Admin: <code>admin@diabcare.ai</code> / <code>admin999</code><br>
+                • Patient: <code>patient1@diabcare.ai</code> / <code>patient123</code>
             </div>
         </div>
     </div>
@@ -113,6 +114,10 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <span>Patient Search</span>
                 </a>
+                <a href="#" class="menu-item hidden" id="menu-patient-dashboard">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <span>My Health Dashboard</span>
+                </a>
                 <a href="#" class="menu-item" id="menu-profile">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                     <span>My Profile</span>
@@ -149,6 +154,48 @@
 
         <!-- Main Content Area -->
         <main class="main-content">
+
+            <!-- VIEW: PATIENT DASHBOARD SCREEN -->
+            <div id="patient-dashboard-view" class="content-view hidden">
+                <header class="content-header">
+                    <div class="content-header-title">
+                        <h2>My Patient Dashboard</h2>
+                        <p class="subtitle" style="margin-top: 0.25rem;">View your scheduled follow-up appointments and assigned care team</p>
+                    </div>
+                </header>
+                
+                <div class="patient-dashboard-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+                    <!-- Left: Appointment Details -->
+                    <div class="card" style="padding: 1.5rem;">
+                        <h3 style="color: var(--medical-red); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            Follow-Up Appointment
+                        </h3>
+                        <div id="patient-appointment-status" style="margin-bottom: 1rem;">
+                            <!-- Status banner and date details populated dynamically -->
+                        </div>
+                    </div>
+                    
+                    <!-- Right: Assigned Doctor Details -->
+                    <div class="card" style="padding: 1.5rem;">
+                        <h3 style="color: var(--medical-red); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            Assigned Doctor / Care Team
+                        </h3>
+                        <div id="patient-doctor-info">
+                            <!-- Doctor details populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Risk screening disclosure (transparency) -->
+                <div class="card" style="padding: 1.5rem; margin-top: 1.5rem;">
+                    <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.25rem;">Care Plan & Health Summary</h3>
+                    <div id="patient-risk-summary">
+                        <!-- Risk details populated dynamically -->
+                    </div>
+                </div>
+            </div>
 
             <!-- VIEW: USER PROFILE SCREEN -->
             <div id="profile-view" class="content-view hidden">

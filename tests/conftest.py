@@ -8,5 +8,6 @@ from Src.database import init_db
 
 @pytest.fixture(scope="session")
 def client():
+    app.state.limiter.enabled = False
     with TestClient(app) as c:
         yield c

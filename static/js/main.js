@@ -37,6 +37,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Re-use full existing application logic via ES modules
     // Import and execute main application bootstrapping
     const appScript = document.createElement("script");
-    appScript.src = "/static/app.js?v=9";
+    appScript.src = "/static/app.js?v=10";
     document.body.appendChild(appScript);
 });
