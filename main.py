@@ -190,7 +190,6 @@ def get_config() -> dict:
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Request and response models
---
 
 class RegisterRequest(BaseModel):
     name: str
