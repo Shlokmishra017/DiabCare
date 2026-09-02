@@ -1,10 +1,5 @@
 """
-DiabCare AI — Database Seed Script
-=====================================
-Creates DATA/diabcare.db and populates it with 6 representative demo patients.
-
-Run from project root:
-  python seed_db.py
+Database seed script for demo patients.
 """
 
 import sys
@@ -17,15 +12,10 @@ from Src.database import init_db, seed_patients
 DB_PATH = "DATA/diabcare.db"
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("  DiabCare AI -- Database Seeder")
-    print("=" * 50)
-
-    print(f"\n[1/2] Initialising database at {DB_PATH} ...")
+    print(f"Initializing database at {DB_PATH}...")
     init_db(DB_PATH)
-    print("      Tables created (or already exist).")
 
-    print("\n[2/2] Seeding patients (6 representative patients) ...")
+    print("Seeding demo patients...")
     ids = seed_patients(
         db_path=DB_PATH,
         cleaned_csv="DATA/CleanedDiabetic_data.csv",
@@ -33,8 +23,7 @@ if __name__ == "__main__":
         n_patients=6,
     )
 
-    print(f"\nDone. {len(ids)} patients seeded:")
+    print(f"Seeded {len(ids)} patients:")
     for pid in ids:
         print(f"  patient_id: {pid}")
 
-    print("\n[OK] Database ready. Run: uvicorn main:app --reload")

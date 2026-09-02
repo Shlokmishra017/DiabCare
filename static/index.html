@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
-    <!-- VIEW 0: LOGIN VIEW -->
+    <!-- Login View -->
     <div id="login-view" class="login-view">
         <div class="login-card">
             <div class="login-logo">
@@ -368,13 +368,13 @@
                             <tbody id="requests-table-body">
                                 <!-- Dynamically populated by JS -->
                             </tbody>
-                        </table>
+</div>
                     </div>
                 </section>
             </div>
 
-            <!-- VIEW 1: PATIENT SELECTION / OVERVIEW SCREEN -->
-            <div id="overview-view" class="content-view">
+            <!-- Patient Selection -->
+            <div id="overview-view" class="content-view active">
                 <header class="content-header">
                     <div class="content-header-title">
                         <h2>Select a patient to assess readmission risk</h2>
@@ -456,7 +456,7 @@
                 </section>
             </div>
 
-            <!-- VIEW 2: PATIENT DETAIL SCREEN -->
+            <!-- Patient Detail Screen -->
             <div id="detail-view" class="content-view hidden" style="padding: 0;">
                 
                 <!-- Dark Header Bar -->
@@ -574,7 +574,7 @@
                 </div>
             </div>
 
-            <!-- VIEW 3: NEW PATIENT RISK SCREENING FORM -->
+            <!-- Screening Form -->
             <div id="new-patient-view" class="content-view hidden">
                  <!-- Header -->
                  <header class="content-header" style="margin-bottom: 1.5rem;">
@@ -596,7 +596,7 @@
                      <form id="new-patient-form">
                           <!-- Grid columns -->
                           <div class="form-grid">
-                              <!-- SECTION 1: DEMOGRAPHICS -->
+                              <!-- Demographics -->
                               <h4 class="form-section-title">Demographics & Administrative</h4>
                               
                               <div class="form-group">
@@ -681,7 +681,7 @@
                                   </select>
                               </div>
 
-                              <!-- SECTION 2: HOSPITALIZATION DETAILS -->
+                              <!-- Hospitalization Details -->
                               <h4 class="form-section-title">Hospitalization Stay Statistics</h4>
 
                               <div class="form-group">
@@ -724,7 +724,7 @@
                                   <input type="number" id="input-prior-inpatient" class="form-control" name="number_inpatient" min="0" value="0" required>
                               </div>
 
-                              <!-- SECTION 3: DIAGNOSIS CODES -->
+                              <!-- Clinical Diagnoses (ICD-9 Codes) -->
                               <h4 class="form-section-title">Clinical Diagnoses (ICD-9 Codes)</h4>
                               
                               <div class="form-group">
@@ -742,7 +742,7 @@
                                   <input type="text" id="input-diag-3" class="form-control" name="diag_3" value="276" placeholder="e.g. 276" required>
                               </div>
 
-                              <!-- SECTION 4: LAB RESULTS & MEDICATIONS -->
+                              <!-- Lab Results & Medications -->
                               <h4 class="form-section-title">Lab Results & Medications</h4>
 
                               <div class="form-group">

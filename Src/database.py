@@ -1,24 +1,16 @@
 """
-DiabCare AI — SQLite Database Helpers
-========================================
-Plain sqlite3 module only — no SQLAlchemy or ORM (per README spec).
-
-Tables:
-  patients    — raw feature columns + patient_id (encounter_id) + summary
-  predictions — prediction cache to avoid re-running SHAP on repeated lookups
+Database helpers for SQLite interaction.
 """
 
 import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional, Generator
-# pyrefly: ignore [missing-import]
 import bcrypt
 
 import pandas as pd
 from Src.Preprocessing import INT_COLS
 
-# All 44 feature columns (matches Preprocessing.py column lists)
 _FEATURE_COLS = [
     "race", "gender", "age",
     "admission_type_id", "discharge_disposition_id", "admission_source_id",
@@ -731,46 +723,38 @@ def get_dashboard_stats(db_path: str) -> dict:
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         
-        # Approved doctors
         approved_docs = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'approved'"
         ).fetchone()[0]
-        
-        # Pending doctor requests
+
         pending_docs = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'pending'"
         ).fetchone()[0]
-        
-        # Rejected doctor requests
+
         rejected_docs = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'doctor' AND status = 'rejected'"
         ).fetchone()[0]
-        
-        # Total doctors
+
         total_docs = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'doctor'"
         ).fetchone()[0]
-        
-        # Total admins
+
         total_admins = cursor.execute(
             "SELECT COUNT(*) FROM users WHERE role = 'admin'"
         ).fetchone()[0]
-        
-        # Total patients in the registry
+
         total_patients = cursor.execute(
             "SELECT COUNT(*) FROM patients"
         ).fetchone()[0]
-        
-        # Risk counts (high, moderate) from predictions cache
+
         high_risk = cursor.execute(
             "SELECT COUNT(*) FROM predictions WHERE risk_category = 'High'"
         ).fetchone()[0]
-        
+
         mod_risk = cursor.execute(
             "SELECT COUNT(*) FROM predictions WHERE risk_category = 'Moderate'"
         ).fetchone()[0]
-        
-        # Pending follow-ups
+
         pending_followups = cursor.execute(
             "SELECT COUNT(*) FROM predictions WHERE follow_up_status = 'Pending'"
         ).fetchone()[0]

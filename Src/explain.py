@@ -1,20 +1,5 @@
 """
-DiabCare AI — Phase 3: Explainability
-========================================
-Provides the core `explain_patient()` function that takes a single patient's
-raw feature row and returns:
-  - risk_percent       : float  (0-100)
-  - risk_category      : str    ("Low" | "Moderate" | "High")
-  - top_factors        : list of dicts with "factor" and "direction"
-  - follow_up_priority : str    ("Low" | "Medium" | "High")
-
-This is the function the Phase 4 FastAPI backend wraps for the /predict endpoint.
-
-IMPORTANT NOTES (from README):
-  - TreeExplainer requires the raw LightGBM model, NOT the full Pipeline.
-    We extract the fitted model step and apply the fitted preprocessor separately.
-  - SHAP values indicate correlation / importance -- NOT causation.
-  - Risk thresholds (30% / 60%) are prototype cutoffs, not clinically validated.
+Model explainability and SHAP feature extraction helpers.
 """
 
 import sys
@@ -22,10 +7,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# pyrefly: ignore [missing-import]
 import joblib
 import pandas as pd
-# pyrefly: ignore [missing-import]
 import shap
 
 # ---------------------------------------------------------------------------
@@ -314,19 +297,14 @@ def explain_patient(
     if pipeline is None:
         pipeline = joblib.load(model_path)
 
-    # Step 1: Extract fitted sub-components
-    # TreeExplainer requires the raw LGBMClassifier, not the full Pipeline.
     preprocessor = pipeline.named_steps["preprocessor"]
     lgbm_model = pipeline.named_steps["model"]
 
-    # Step 2: Transform patient row through the fitted preprocessor
     X_transformed = preprocessor.transform(patient_row)
 
-    # Step 3: Get risk probability from the full pipeline
     risk_prob = pipeline.predict_proba(patient_row)[0, 1]
     risk_percent = round(float(risk_prob) * 100, 1)
 
-    # Step 4: SHAP explanation via cached TreeExplainer on the raw LightGBM model
     global _explainer_cache
     if '_explainer_cache' not in globals():
         _explainer_cache = {}
@@ -338,26 +316,21 @@ def explain_patient(
 
     shap_values = explainer.shap_values(X_transformed)
 
-    # Handle both old shap (list of arrays) and new shap (list of 2D arrays)
     if isinstance(shap_values, list):
-        # Binary classification: [neg_class, pos_class] or new format
         sv = shap_values[1][0] if shap_values[1].ndim > 1 else shap_values[1]
     else:
         sv = shap_values[0] if shap_values.ndim > 1 else shap_values
 
-    # Step 5: Map SHAP values back to human-readable feature names
     feature_names = preprocessor.get_feature_names_out()
     assert len(sv) == len(feature_names), (
         f"SHAP values length {len(sv)} != feature names length {len(feature_names)}"
     )
 
-    # Convert X_transformed to dense 1D array of values
     if hasattr(X_transformed, "toarray"):
         x_dense = X_transformed.toarray()[0]
     else:
         x_dense = X_transformed[0]
 
-    # Only explain numeric features or categorical features that are actually present
     filtered_shap_pairs = []
     for feat_name, shap_val, val in zip(feature_names, sv, x_dense):
         if feat_name.startswith("numerical__") or (feat_name.startswith("categorical__") and val > 0.5):
@@ -375,7 +348,6 @@ def explain_patient(
             "shap_value": float(shap_val)
         })
 
-    # Step 6: Derive category and priority
     category = _risk_category(risk_percent)
     priority = _follow_up_priority(category)
 

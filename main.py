@@ -1,59 +1,30 @@
 """
-DiabCare AI — FastAPI Backend
-================================
-Phase 4: serves the fixed API contract below.
-
-Endpoints:
-  POST /predict   { "patient_id": "..." }
-  GET  /patients
-  GET  /health
-
-Run from project root:
-  uvicorn main:app --reload
-  # then visit http://localhost:8000/docs
+DiabCare API server.
 """
 
+import io
 import logging
 import os
 import re
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+import joblib
+import jwt
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Configure structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger("diabcare")
-
-# pyrefly: ignore [missing-import]
-import joblib
-# pyrefly: ignore [missing-import]
-from datetime import datetime, timedelta, timezone
-# pyrefly: ignore [missing-import]
-import jwt
-# pyrefly: ignore [missing-import]
-import bcrypt
-# pyrefly: ignore [missing-import]
-import io
-# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, HTTPException, Depends, Request, UploadFile, File
-# pyrefly: ignore [missing-import]
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
-# pyrefly: ignore [missing-import]
 from fastapi.responses import FileResponse, Response
-# pyrefly: ignore [missing-import]
 from fastapi.staticfiles import StaticFiles
-# pyrefly: ignore [missing-import]
 from pydantic import BaseModel, Field, EmailStr
 
-# pyrefly: ignore [missing-import]
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -86,37 +57,15 @@ from Src.database import (
 )
 from Src.explain import explain_patient
 
-from Src.database import (
-    cache_prediction,
-    get_all_patients,
-    get_cached_prediction,
-    get_patient,
-    get_patient_record,
-    init_db,
-    save_new_patient,
-    get_user_by_email,
-    get_user_by_id,
-    update_user_profile,
-    save_new_user,
-    get_pending_requests,
-    get_all_doctors,
-    get_all_admins,
-    update_user_status,
-    update_follow_up_status,
-    get_dashboard_stats,
-    assign_patient_to_doctor,
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
-from Src.explain import explain_patient
+logger = logging.getLogger("diabcare")
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
 DB_PATH = "DATA/diabcare.db"
 MODEL_PATH = "DATA/lgbm_pipeline.joblib"
 
-# ---------------------------------------------------------------------------
-# App Lifespan & State Initialization
-# ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db(DB_PATH)
@@ -146,9 +95,6 @@ async def lifespan(app: FastAPI):
 def get_pipeline(request: Request):
     return request.app.state.pipeline
 
-# ---------------------------------------------------------------------------
-# App init & Rate Limiter
-# ---------------------------------------------------------------------------
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
@@ -160,9 +106,6 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# ---------------------------------------------------------------------------
-# Security & JWT Configuration
-# ---------------------------------------------------------------------------
 JWT_SECRET = os.getenv("JWT_SECRET")
 APP_ENV = os.getenv("APP_ENV", "development")
 if not JWT_SECRET:
@@ -185,7 +128,6 @@ def create_access_token(data: dict) -> str:
     return encoded_jwt
 
 def create_refresh_token(user_id: str) -> tuple[str, str, str]:
-    """Returns (token_id, token, expires_at_iso)"""
     token_id = f"RT-{uuid.uuid4().hex[:12]}"
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
@@ -206,7 +148,6 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
         if user_id is None or role is None:
             raise HTTPException(status_code=401, detail="Invalid token claims.")
 
-        # Log action in audit_logs
         client_ip = request.client.host if request.client else "unknown"
         action = f"{request.method} {request.url.path}"
         save_audit_log(DB_PATH, user_id, action, request.url.path, client_ip)
@@ -226,7 +167,6 @@ def validate_password_strength(password: str) -> bool:
         return False
     return True
 
-# CORS — dynamic configuration based on ALLOWED_ORIGINS env var
 raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000")
 allowed_origins = [origin.strip() for origin in raw_allowed_origins.split(",") if origin.strip()]
 
@@ -238,7 +178,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static frontend
 @app.get("/")
 def read_root() -> FileResponse:
     return FileResponse("static/index.html")
@@ -250,11 +189,8 @@ def get_config() -> dict:
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-
-
-# ---------------------------------------------------------------------------
-# Request / response models (per fixed API contract in README)
-# ---------------------------------------------------------------------------
+# Request and response models
+--
 
 class RegisterRequest(BaseModel):
     name: str
@@ -709,12 +645,10 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
             detail="Patient ID cannot be empty."
         )
 
-    # 1. Check prediction cache
     cached = get_cached_prediction(DB_PATH, patient_id)
     if cached is not None:
         return PredictResponse(**cached)
 
-    # 2. Load patient row from DB
     patient_row = get_patient(DB_PATH, patient_id)
     if patient_row is None:
         raise HTTPException(
@@ -722,11 +656,9 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
             detail=f"Patient '{patient_id}' not found in the database.",
         )
 
-    # 3. Run explain_patient (SHAP + LightGBM)
     result = explain_patient(patient_row, pipeline=pipeline)
     result["patient_id"] = patient_id
 
-    # 4. Cache result
     cache_prediction(DB_PATH, patient_id, result)
 
     return PredictResponse(**result)
@@ -734,24 +666,14 @@ def predict(request: PredictRequest, current_user: dict = Depends(get_current_us
 
 @app.post("/predict_new", response_model=PredictResponse, summary="Predict 30-day readmission risk for a new patient")
 def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_current_user), pipeline = Depends(get_pipeline)) -> PredictResponse:
-    """
-    Given raw patient feature values as JSON, return prediction results:
-    - risk_percent      : 0-100 float
-    - risk_category     : Low / Moderate / High
-    - top_factors       : top 3 SHAP-based plain-language factors
-    - follow_up_priority: Low / Medium / High
-
-    Results are cached in predictions table under a generated placeholder patient ID.
-    """
     if current_user["role"] == "patient":
         raise HTTPException(
             status_code=403,
             detail="Forbidden. Patients cannot run predictions."
         )
-    # 1. Server-side validation
+
     errors = []
 
-    # Check numeric bounds
     numeric_bounds = {
         "time_in_hospital": (1, 14, "Length of hospital stay must be between 1 and 14 days."),
         "num_lab_procedures": (1, 150, "Number of lab procedures must be between 1 and 150."),
@@ -770,7 +692,6 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
         elif not (min_val <= val <= max_val):
             errors.append(msg)
 
-    # Check diagnosis codes are not empty
     for field in ["diag_1", "diag_2", "diag_3"]:
         val = getattr(request, field, "")
         if not val or not str(val).strip():
@@ -779,21 +700,16 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
-    # 2. Build patient dictionary with aliases for hyphenated keys
     patient_dict = request.model_dump(by_alias=True)
 
-    # 3. Create single-row DataFrame for evaluation (excluding non-model metadata)
     eval_dict = {k: v for k, v in patient_dict.items() if k not in ["name"]}
     df = pd.DataFrame([eval_dict])
 
-    # Ensure numeric columns are correct dtype
     for col in INT_COLS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # 4. Generate placeholder ID
     placeholder_id = f"NEW-{uuid.uuid4().hex[:6].upper()}"
 
-    # 5. Run explain_patient
     try:
         result = explain_patient(df, pipeline=pipeline)
     except Exception as e:
@@ -804,13 +720,11 @@ def predict_new(request: PredictNewRequest, current_user: dict = Depends(get_cur
 
     result["patient_id"] = placeholder_id
 
-    # 6. Save raw features to patient database registry
     try:
         save_new_patient(DB_PATH, placeholder_id, patient_dict)
     except Exception as e:
         logger.warning(f"Failed to save new patient raw features: {str(e)}")
 
-    # 7. Cache prediction
     try:
         cache_prediction(DB_PATH, placeholder_id, result)
     except Exception as e:

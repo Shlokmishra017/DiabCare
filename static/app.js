@@ -1,13 +1,4 @@
-/**
- * DiabCare AI - Redesigned Frontend Controller
- * ===============================================
- * Drives the hospital light-themed dashboard, patient list table search,
- * SPA transitions, gauge animations, and SHAP cards.
- */
-
 const initApp = () => {
-    
-    // Mapped Clinical Identities for seeded patient IDs matching the mockup screenshots
     const PATIENT_MAPPING = {
         "2552952": { uiId: "P-1001", ageGroup: "65-70", gender: "Male", lastEncounter: "Apr 24, 2025" },
         "149190": { uiId: "P-1002", ageGroup: "55-60", gender: "Female", lastEncounter: "Apr 22, 2025" },

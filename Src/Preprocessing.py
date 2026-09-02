@@ -1,11 +1,5 @@
 """
-DiabCare AI — Preprocessing Module
-====================================
-Defines column lists, builds the ColumnTransformer preprocessor, and
-provides a helper to load the cleaned dataset.
-
-Usage:
-    from Src.Preprocessing import load_data, build_preprocessor, NUMERIC_COLS, CATEGORICAL_COLS
+Dataset preprocessing definitions and pipeline builder.
 """
 
 import pandas as pd
@@ -13,13 +7,6 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
-# ---------------------------------------------------------------------------
-# Column definitions
-# NOTE: admission_type_id, discharge_disposition_id, admission_source_id are
-# integer codes referencing IDS_mapping.csv — they are treated as categorical
-# (not scaled), per the README spec.
-# ---------------------------------------------------------------------------
 
 INT_COLS = [
     "admission_type_id",
@@ -47,22 +34,17 @@ NUMERIC_COLS = [
 ]
 
 CATEGORICAL_COLS = [
-    # Demographics / administrative
     "race",
     "gender",
     "age",
-    # ID-code columns treated as categorical (not numeric)
     "admission_type_id",
     "discharge_disposition_id",
     "admission_source_id",
-    # Diagnosis codes
     "diag_1",
     "diag_2",
     "diag_3",
-    # Lab / glucose results
     "max_glu_serum",
     "A1Cresult",
-    # Medication columns
     "metformin",
     "repaglinide",
     "nateglinide",
@@ -94,14 +76,6 @@ TARGET_COL = "target"
 
 
 def load_data(cleaned_csv_path: str = "DATA/CleanedDiabetic_data.csv"):
-    """
-    Load the cleaned dataset.
-
-    Returns
-    -------
-    X : pd.DataFrame  — feature matrix (44 columns, no target)
-    y : pd.Series     — binary target (1 = readmitted within 30 days)
-    """
     df = pd.read_csv(cleaned_csv_path)
     X = df.drop(columns=[TARGET_COL])
     y = df[TARGET_COL]
@@ -109,18 +83,6 @@ def load_data(cleaned_csv_path: str = "DATA/CleanedDiabetic_data.csv"):
 
 
 def build_preprocessor() -> ColumnTransformer:
-    """
-    Build the sklearn ColumnTransformer:
-      - Numeric cols  : median imputation → StandardScaler
-      - Categorical cols : most-frequent imputation → OneHotEncoder(handle_unknown='ignore')
-
-    handle_unknown='ignore' is mandatory so that single-patient inference at
-    demo time works even if a category value was not seen during training.
-
-    Returns
-    -------
-    preprocessor : ColumnTransformer (unfitted)
-    """
     numeric_pipeline = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
@@ -137,3 +99,4 @@ def build_preprocessor() -> ColumnTransformer:
     ])
 
     return preprocessor
+
